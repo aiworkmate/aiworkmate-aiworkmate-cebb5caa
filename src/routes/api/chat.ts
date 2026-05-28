@@ -1,16 +1,25 @@
 // Server route — streams chat completions from Lovable AI Gateway.
 //
-// Guarantees:
-//  1. NEVER returns a 5xx; any internal failure becomes a graceful SSE reply.
-//  2. Fallback is ONLY used after real recovery attempts fail — never as the
-//     default path. Successful AI streams flow through untouched.
-//  3. Every pipeline stage is logged with a structured `[chat:<stage>]` tag
-//     and a per-request `reqId`, so upstream issues are diagnosable.
-//  4. Fallback SSE frames carry `isFallback: true` so logs / future clients
-//     can distinguish real answers from recovery messages.
+// Stability layers (all on top of existing architecture; no rewrite):
+//   1. Hard safety wrapper — every request goes through try/catch; never 5xx.
+//   2. Smart router (strict JSON: intent / needsLiveData / needsMemory).
+//   3. Live-data auto-trigger via web search when needsLiveData is true.
+//   4. "Smarter over time" memory: recall on input, extract on output.
+//   5. Parallel execution (router + memory + conv check + live search) for low latency,
+//      plus a small in-process TTL cache for repeated live queries.
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { routeMessage } from "@/lib/chat/router.server";
+import { webSearch, type WebSearchResult } from "@/lib/chat/web-search.server";
+import {
+  recallMemories,
+  storeMemory,
+  formatMemoriesForPrompt,
+  extractPreference,
+  type MemoryEntry,
+} from "@/lib/chat/memory.server";
+import { liveDataCache } from "@/lib/chat/cache.server";
 
 const Body = z.object({
   conversationId: z.string().uuid(),
@@ -23,17 +32,10 @@ const Body = z.object({
 const FRIENDLY_FALLBACK = "Sorry, something went wrong. Please try again.";
 
 type Stage =
-  | "auth"
-  | "validate"
-  | "router"
-  | "memory"
-  | "tools"
-  | "llm.request"
-  | "llm.stream"
-  | "persist";
+  | "auth" | "validate" | "router" | "memory" | "tools"
+  | "live" | "llm.request" | "llm.stream" | "persist";
 
 function log(reqId: string, stage: Stage, status: "ok" | "warn" | "error", info: Record<string, unknown> = {}) {
-  // Single structured line per stage. Easy to grep: `[chat:llm.request]`.
   const payload = { reqId, stage, status, ...info };
   if (status === "error") console.error(`[chat:${stage}]`, payload);
   else if (status === "warn") console.warn(`[chat:${stage}]`, payload);
@@ -54,23 +56,39 @@ function gracefulStream(reqId: string, message: string, reason: string): Respons
   const stream = new ReadableStream({
     start(controller) {
       try {
-        // Mark this frame as a fallback so clients/logs can distinguish it
-        // from a real model token.
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ delta: message, isFallback: true, reason })}\n\n`),
         );
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      } catch {
-        /* ignore */
-      } finally {
-        controller.close();
-      }
+      } catch { /* ignore */ } finally { controller.close(); }
     },
   });
   return new Response(stream, {
     status: 200,
     headers: { ...sseHeaders(), "X-Chat-Fallback": "1", "X-Chat-Fallback-Reason": reason },
   });
+}
+
+type Conv = { id: string; user_id: string; title: string };
+
+async function fetchConversation(convId: string): Promise<Conv | null> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("conversations").select("id, user_id, title")
+      .eq("id", convId).maybeSingle();
+    return (data as Conv | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function cachedWebSearch(query: string): Promise<WebSearchResult | null> {
+  const key = query.trim().toLowerCase().slice(0, 300);
+  const hit = liveDataCache.get(key) as WebSearchResult | null | undefined;
+  if (hit !== undefined) return hit;
+  const result = await webSearch(query);
+  liveDataCache.set(key, result);
+  return result;
 }
 
 export const Route = createFileRoute("/api/chat")({
@@ -115,31 +133,33 @@ export const Route = createFileRoute("/api/chat")({
             return gracefulStream(reqId, "That message couldn't be processed. Please try again.", "bad_input");
           }
 
-          // ── Stage: router (conversation ownership check) ────────────────
-          type Conv = { id: string; user_id: string; title: string };
-          let conv: Conv | null = null;
-          try {
-            const { data, error } = await supabaseAdmin
-              .from("conversations").select("id, user_id, title")
-              .eq("id", parsed.conversationId).maybeSingle();
-            if (error) log(reqId, "router", "warn", { err: error.message });
-            conv = (data as Conv | null) ?? null;
-          } catch (err) {
-            log(reqId, "router", "error", { err: String(err) });
-          }
+          const lastUser = [...parsed.messages].reverse().find((m) => m.role === "user");
+          const lastUserText = lastUser?.content ?? "";
+
+          // ── Stage: router (strict JSON contract; pure function, instant) ──
+          const decision = routeMessage(lastUserText);
+          log(reqId, "router", "ok", decision);
+
+          // ── Parallel: conv ownership + memory recall + (optional) live data ──
+          const tParallel = Date.now();
+          const [conv, memories, live] = await Promise.all([
+            fetchConversation(parsed.conversationId),
+            decision.needsMemory ? recallMemories(userId, 8) : Promise.resolve<MemoryEntry[]>([]),
+            decision.needsLiveData ? cachedWebSearch(lastUserText) : Promise.resolve<WebSearchResult | null>(null),
+          ]);
+          log(reqId, "memory", "ok", { hits: memories.length });
+          log(reqId, "live", live ? "ok" : "warn", {
+            triggered: decision.needsLiveData,
+            sources: live?.sources.length ?? 0,
+            ms: Date.now() - tParallel,
+          });
+          // Placeholder for the future tool layer.
+          log(reqId, "tools", "ok", { invoked: 0 });
+
           if (!conv || conv.user_id !== userId) {
             log(reqId, "router", "warn", { reason: !conv ? "not_found" : "forbidden" });
             return gracefulStream(reqId, "This conversation is no longer available.", "conv_unavailable");
           }
-          log(reqId, "router", "ok", { convId: conv.id });
-
-          // ── Stage: memory (placeholder until backend memory layer lands) ──
-          // We log a stub so the pipeline shape is explicit and future
-          // additions (vector recall, summaries) are easy to slot in.
-          log(reqId, "memory", "ok", { hits: 0, note: "memory layer not yet wired" });
-
-          // ── Stage: tools (placeholder) ──────────────────────────────────
-          log(reqId, "tools", "ok", { invoked: 0, note: "tool layer not yet wired" });
 
           const apiKey = process.env.LOVABLE_API_KEY;
           if (!apiKey) {
@@ -147,8 +167,7 @@ export const Route = createFileRoute("/api/chat")({
             return gracefulStream(reqId, "The AI service is temporarily unavailable. Please try again shortly.", "no_api_key");
           }
 
-          // Persist the latest user message (best-effort, non-fatal)
-          const lastUser = [...parsed.messages].reverse().find((m) => m.role === "user");
+          // Persist user message (best-effort) + auto-title.
           if (lastUser) {
             try {
               await supabaseAdmin.from("messages").insert({
@@ -162,13 +181,27 @@ export const Route = createFileRoute("/api/chat")({
             } catch (err) {
               log(reqId, "persist", "warn", { kind: "user_message", err: String(err) });
             }
+
+            // Best-effort: capture clear preferences so future replies feel "smarter".
+            const pref = extractPreference(lastUser.content);
+            if (pref) {
+              storeMemory(userId, pref, "preference", 0.85).catch(() => {});
+            }
           }
 
-          const systemPrompt = {
-            role: "system" as const,
-            content:
-              "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Provide only the final answer.",
-          };
+          // ── Assemble system context ─────────────────────────────────────
+          const contextBlocks: string[] = [
+            "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Provide only the final answer.",
+          ];
+          const memBlock = formatMemoriesForPrompt(memories);
+          if (memBlock) contextBlocks.push(memBlock);
+          if (live) {
+            const srcs = live.sources.length ? `\nSources: ${live.sources.join(", ")}` : "";
+            contextBlocks.push(
+              `Live web context for the user's latest question (use it to ground your answer; cite the sources):\n${live.summary}${srcs}`,
+            );
+          }
+          const systemPrompt = { role: "system" as const, content: contextBlocks.join("\n\n") };
 
           // ── Stage: llm.request ──────────────────────────────────────────
           const model = "google/gemini-2.5-flash";
@@ -180,16 +213,13 @@ export const Route = createFileRoute("/api/chat")({
             upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
               headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                model,
-                stream: true,
-                messages: [systemPrompt, ...parsed.messages],
-              }),
+              body: JSON.stringify({ model, stream: true, messages: [systemPrompt, ...parsed.messages] }),
               signal: controller.signal,
             });
             clearTimeout(timeout);
             log(reqId, "llm.request", upstream.ok ? "ok" : "warn", {
               model, status: upstream.status, ms: Date.now() - llmStart,
+              intent: decision.intent, liveUsed: !!live, memUsed: memories.length,
             });
           } catch (err) {
             log(reqId, "llm.request", "error", { model, err: String(err), ms: Date.now() - llmStart });
@@ -240,20 +270,12 @@ export const Route = createFileRoute("/api/chat")({
                         assembled += delta;
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`));
                       }
-                    } catch {
-                      /* keepalive or partial frame — ignore */
-                    }
+                    } catch { /* keepalive — ignore */ }
                   }
                 }
-                log(reqId, "llm.stream", "ok", {
-                  chars: assembled.length, ms: Date.now() - llmStart,
-                });
+                log(reqId, "llm.stream", "ok", { chars: assembled.length, ms: Date.now() - llmStart });
               } catch (err) {
-                log(reqId, "llm.stream", "error", {
-                  err: String(err), assembledChars: assembled.length,
-                });
-                // Only emit a fallback frame if we never produced any real
-                // tokens — otherwise the partial reply is the best result.
+                log(reqId, "llm.stream", "error", { err: String(err), assembledChars: assembled.length });
                 if (!assembled) {
                   try {
                     controller.enqueue(
@@ -285,10 +307,15 @@ export const Route = createFileRoute("/api/chat")({
 
           return new Response(stream, {
             status: 200,
-            headers: { ...sseHeaders(), "X-Request-Id": reqId },
+            headers: {
+              ...sseHeaders(),
+              "X-Request-Id": reqId,
+              "X-Chat-Intent": decision.intent,
+              "X-Chat-Live": decision.needsLiveData ? "1" : "0",
+              "X-Chat-Memory": String(memories.length),
+            },
           });
         } catch (err) {
-          // Last-resort guard. Never returns a 5xx.
           log(reqId, "llm.stream", "error", { unhandled: true, err: String(err) });
           return gracefulStream(reqId, FRIENDLY_FALLBACK, "unhandled");
         }
