@@ -177,26 +177,27 @@ export const Route = createFileRoute("/api/chat")({
             return gracefulStream(reqId, "The AI service is temporarily unavailable. Please try again shortly.", "no_api_key");
           }
 
-          // Persist user message (best-effort) + auto-title.
+          // Persist user message + auto-title + preference extraction.
+          // ASYNC ONLY — fire-and-forget so DB latency never blocks time-to-first-token.
           if (lastUser) {
-            try {
-              await supabaseAdmin.from("messages").insert({
-                conversation_id: conv.id, user_id: userId, role: "user", content: lastUser.content,
-              });
-              if (conv.title === "New conversation") {
-                const newTitle = lastUser.content.slice(0, 60).trim();
-                await supabaseAdmin.from("conversations").update({ title: newTitle }).eq("id", conv.id);
+            const userContent = lastUser.content;
+            const isNewConv = conv.title === "New conversation";
+            void (async () => {
+              try {
+                await supabaseAdmin.from("messages").insert({
+                  conversation_id: conv.id, user_id: userId, role: "user", content: userContent,
+                });
+                if (isNewConv) {
+                  await supabaseAdmin.from("conversations")
+                    .update({ title: userContent.slice(0, 60).trim() }).eq("id", conv.id);
+                }
+                log(reqId, "persist", "ok", { kind: "user_message" });
+              } catch (err) {
+                log(reqId, "persist", "warn", { kind: "user_message", err: String(err) });
               }
-              log(reqId, "persist", "ok", { kind: "user_message" });
-            } catch (err) {
-              log(reqId, "persist", "warn", { kind: "user_message", err: String(err) });
-            }
-
-            // Best-effort: capture clear preferences so future replies feel "smarter".
-            const pref = extractPreference(lastUser.content);
-            if (pref) {
-              storeMemory(userId, pref, "preference", 0.85).catch(() => {});
-            }
+            })();
+            const pref = extractPreference(userContent);
+            if (pref) void storeMemory(userId, pref, "preference", 0.85).catch(() => {});
           }
 
           // ── Assemble system context ─────────────────────────────────────
