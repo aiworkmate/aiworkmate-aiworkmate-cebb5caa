@@ -82,18 +82,28 @@ function gracefulStream(reqId: string, message: string, reason: string): Respons
     headers: { ...sseHeaders(), "X-Chat-Fallback": "1", "X-Chat-Fallback-Reason": reason },
   });
 }
+type Conv = { id: string; user_id: string; title: string; workspace_id: string | null; organization_id: string | null };
 
-type Conv = { id: string; user_id: string; title: string };
+function makeUserClient(token: string): SupabaseClient<Database> | null {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return null;
+  return createClient<Database>(url, key, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+  });
+}
 
-async function fetchConversation(convId: string): Promise<Conv | null> {
+async function fetchConversation(sb: SupabaseClient<Database>, convId: string): Promise<Conv | null> {
   try {
-    const { data } = await supabaseAdmin
-      .from("conversations").select("id, user_id, title")
+    const { data } = await sb
+      .from("conversations").select("id, user_id, title, workspace_id, organization_id")
       .eq("id", convId).maybeSingle();
     return (data as Conv | null) ?? null;
   } catch {
     return null;
   }
+}
 }
 
 async function cachedWebSearch(query: string): Promise<WebSearchResult | null> {
