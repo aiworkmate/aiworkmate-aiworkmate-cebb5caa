@@ -1,11 +1,15 @@
-import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, Plus, Send, Sparkles, Loader2, Trash2, ShieldCheck, Brain } from "lucide-react";
+import { MessageSquare, Plus, Sparkles, ShieldCheck, Brain, Pencil, Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { EmptyState } from "@/components/page-primitives";
 import { toast } from "sonner";
+import { Composer } from "@/components/chat/composer";
+import { MessageBubble } from "@/components/chat/message-bubble";
+import { ConversationItem } from "@/components/chat/conversation-item";
+import type { MessageAttachment } from "@/lib/api/endpoints";
 
 export const Route = createFileRoute("/app/chat")({
   head: () => ({ meta: [{ title: "Chat · AI WorkMate" }] }),
@@ -13,19 +17,26 @@ export const Route = createFileRoute("/app/chat")({
 });
 
 interface Conversation { id: string; title: string; updated_at: string }
-interface Message { id: string; role: "user" | "assistant" | "system"; content: string; created_at: string }
+interface Message {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  created_at: string;
+  attachments?: MessageAttachment[];
+}
 
 function ChatPage() {
   const { user, session } = useAuth();
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [input, setInput] = useState("");
+  // Local message overlay — holds optimistic user messages + attachments
+  // (DB schema doesn't persist attachments yet; backend will own this later).
+  const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { data: conversations = [] } = useQuery<Conversation[]>({
+  const conversationsQ = useQuery<Conversation[]>({
     queryKey: ["conversations", user?.id],
     queryFn: async () => {
       const { data } = await supabase
@@ -35,12 +46,13 @@ function ChatPage() {
     },
     enabled: !!user,
   });
+  const conversations = conversationsQ.data ?? [];
 
   useEffect(() => {
     if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
   }, [conversations, activeId]);
 
-  const { data: messages = [] } = useQuery<Message[]>({
+  const messagesQ = useQuery<Message[]>({
     queryKey: ["messages", activeId],
     queryFn: async () => {
       if (!activeId) return [];
@@ -51,10 +63,17 @@ function ChatPage() {
     },
     enabled: !!activeId,
   });
+  const dbMessages = messagesQ.data ?? [];
+  const localOverlay = activeId ? overlay[activeId] ?? [] : [];
+  // Merge: server messages + any overlay entries whose ids aren't yet persisted.
+  const messages: Message[] = [
+    ...dbMessages,
+    ...localOverlay.filter((o) => !dbMessages.some((d) => d.id === o.id)),
+  ];
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streamingText]);
+  }, [messages.length, streamingText]);
 
   async function createConversation() {
     if (!user) return;
@@ -73,41 +92,69 @@ function ChatPage() {
     if (activeId === id) setActiveId(null);
   }
 
-  async function sendMessage() {
-    if (!input.trim() || isStreaming || !session) return;
+  async function renameConversation(id: string, title: string) {
+    // Optimistic
+    qc.setQueryData<Conversation[]>(["conversations", user?.id], (old = []) =>
+      old.map((c) => (c.id === id ? { ...c, title } : c)),
+    );
+    const { error } = await supabase.from("conversations").update({ title }).eq("id", id);
+    if (error) { toast.error(error.message); qc.invalidateQueries({ queryKey: ["conversations"] }); }
+  }
+
+  async function deleteMessage(id: string) {
+    if (!activeId) return;
+    const { error } = await supabase.from("messages").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    qc.invalidateQueries({ queryKey: ["messages", activeId] });
+  }
+
+  async function sendMessage(text: string, attachments: MessageAttachment[]) {
+    if ((!text && attachments.length === 0) || isStreaming || !session) return;
     let convId = activeId;
     if (!convId) {
       if (!user) return;
+      const autoTitle = text ? text.slice(0, 60) : "New conversation";
       const { data, error } = await supabase
-        .from("conversations").insert({ user_id: user.id, title: "New conversation" })
+        .from("conversations").insert({ user_id: user.id, title: autoTitle })
         .select("id").single();
       if (error) { toast.error(error.message); return; }
       convId = data.id;
       setActiveId(convId);
       qc.invalidateQueries({ queryKey: ["conversations"] });
     }
-    const userMessage = input.trim();
-    setInput("");
+
+    // Auto-title: if conversation still has the default title, replace with first user message.
+    const existing = conversations.find((c) => c.id === convId);
+    if (existing && existing.title === "New conversation" && text) {
+      renameConversation(convId, text.slice(0, 60));
+    }
+
     setIsStreaming(true);
     setStreamingText("");
 
-    // Optimistic: show user message immediately
-    qc.setQueryData<Message[]>(["messages", convId], (old = []) => [
-      ...old,
-      { id: `temp-${Date.now()}`, role: "user", content: userMessage, created_at: new Date().toISOString() },
-    ]);
+    const optimisticUserMsg: Message = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content: text,
+      created_at: new Date().toISOString(),
+      attachments: attachments.length ? attachments : undefined,
+    };
+    setOverlay((curr) => ({ ...curr, [convId!]: [...(curr[convId!] ?? []), optimisticUserMsg] }));
 
     try {
-      const history = [...messages.map((m) => ({ role: m.role, content: m.content })), { role: "user" as const, content: userMessage }];
+      const history = [
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user" as const, content: text },
+      ];
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ conversationId: convId, messages: history }),
+        body: JSON.stringify({ conversationId: convId, messages: history, attachments }),
       });
-      if (!res.ok || !res.body) { toast.error(`Chat error: ${res.status}`); setIsStreaming(false); return; }
+      if (!res.ok || !res.body) { toast.error(`Chat error: ${res.status}`); return; }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -137,8 +184,39 @@ function ChatPage() {
       setStreamingText("");
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      // Drop overlay once server data refreshes — keep until next tick.
+      setTimeout(() => setOverlay((curr) => ({ ...curr, [convId!]: [] })), 400);
     }
   }
+
+  async function retryLastAssistant() {
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    // Strip the last assistant message locally; backend will produce a fresh one.
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    if (lastAssistant && !lastAssistant.id.startsWith("temp-")) {
+      await supabase.from("messages").delete().eq("id", lastAssistant.id);
+      qc.invalidateQueries({ queryKey: ["messages", activeId] });
+    }
+    sendMessage(lastUser.content, lastUser.attachments ?? []);
+  }
+
+  async function editAndResend(messageId: string, newContent: string) {
+    // Truncate from the edited message onward, then resend.
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const tail = messages.slice(idx);
+    for (const m of tail) {
+      if (!m.id.startsWith("temp-")) {
+        await supabase.from("messages").delete().eq("id", m.id);
+      }
+    }
+    qc.invalidateQueries({ queryKey: ["messages", activeId] });
+    sendMessage(newContent, []);
+  }
+
+  const activeConv = conversations.find((c) => c.id === activeId);
+  const messagesLoading = messagesQ.isLoading && !!activeId;
 
   return (
     <div className="flex h-full">
@@ -151,19 +229,21 @@ function ChatPage() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
-          {conversations.length === 0 ? (
+          {conversationsQ.isLoading ? (
+            <ConversationSkeletons />
+          ) : conversations.length === 0 ? (
             <div className="px-3 py-8 text-center text-xs text-muted-foreground">No conversations yet.</div>
           ) : (
             conversations.map((c) => (
-              <div key={c.id} className={`group flex items-center gap-2 rounded-md px-2 py-2 text-sm ${activeId === c.id ? "bg-accent text-accent-foreground" : "hover:bg-surface"}`}>
-                <button onClick={() => setActiveId(c.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{c.title}</span>
-                </button>
-                <button onClick={() => deleteConversation(c.id)} className="opacity-0 transition group-hover:opacity-100" title="Delete">
-                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                </button>
-              </div>
+              <ConversationItem
+                key={c.id}
+                id={c.id}
+                title={c.title}
+                active={activeId === c.id}
+                onSelect={() => setActiveId(c.id)}
+                onRename={(t) => renameConversation(c.id, t)}
+                onDelete={() => deleteConversation(c.id)}
+              />
             ))
           )}
         </div>
@@ -171,20 +251,20 @@ function ChatPage() {
 
       {/* Thread */}
       <section className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-border px-6 py-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Sparkles className="h-4 w-4 text-primary-glow" />
-            <span className="font-display font-semibold">{conversations.find((c) => c.id === activeId)?.title ?? "New conversation"}</span>
-          </div>
-          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            <ShieldCheck className="h-3 w-3 text-success" /> e2e audited
-            <span className="mx-2 text-border">·</span>
-            <Brain className="h-3 w-3 text-primary-glow" /> memory: on
-          </div>
-        </div>
+        <ThreadHeader
+          title={activeConv?.title ?? "New conversation"}
+          canRename={!!activeConv}
+          onRename={(t) => activeConv && renameConversation(activeConv.id, t)}
+        />
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
-          {messages.length === 0 && !isStreaming ? (
+          {messagesLoading ? (
+            <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
+              <MessageSkeleton />
+              <MessageSkeleton align="right" />
+              <MessageSkeleton />
+            </div>
+          ) : messages.length === 0 && !isStreaming ? (
             <div className="grid h-full place-items-center p-8">
               <EmptyState
                 icon={MessageSquare}
@@ -194,65 +274,103 @@ function ChatPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
-              {messages.map((m) => <MessageBubble key={m.id} role={m.role} content={m.content} />)}
+              {messages.map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  onEdit={m.role === "user" ? (next) => editAndResend(m.id, next) : undefined}
+                  onRetry={m.role === "assistant" ? retryLastAssistant : undefined}
+                  onDelete={m.id.startsWith("temp-") ? undefined : () => deleteMessage(m.id)}
+                />
+              ))}
               {isStreaming && (
-                <MessageBubble role="assistant" content={streamingText || "▍"} streaming />
+                <MessageBubble
+                  message={{ id: "streaming", role: "assistant", content: streamingText }}
+                  streaming
+                />
               )}
             </div>
           )}
         </div>
 
         <div className="border-t border-border bg-background/60 p-4 backdrop-blur">
-          <div className="mx-auto max-w-3xl">
-            <div className="flex items-end gap-2 rounded-xl border border-border bg-surface/60 p-2 shadow-elevated">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                rows={1}
-                placeholder="Message AI WorkMate…"
-                className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground/70"
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!input.trim() || isStreaming}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-gradient-primary text-primary-foreground shadow-glow transition disabled:opacity-40"
-              >
-                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
-            </div>
-            <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-              Responses are final outputs only. Tool traces are not displayed.
-            </p>
-          </div>
+          <Composer isStreaming={isStreaming} onSend={sendMessage} />
+          <p className="mx-auto mt-2 max-w-3xl text-center font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+            Responses are final outputs only. Tool traces are not displayed.
+          </p>
         </div>
       </section>
     </div>
   );
 }
 
-function MessageBubble({ role, content, streaming }: { role: string; content: string; streaming?: boolean }) {
-  const isUser = role === "user";
+function ThreadHeader({ title, canRename, onRename }: { title: string; canRename: boolean; onRename: (t: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  useEffect(() => setDraft(title), [title]);
+
   return (
-    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-gradient-primary text-[10px] font-bold text-primary-foreground shadow-glow">
-          W
-        </div>
-      )}
-      <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-        isUser
-          ? "bg-primary text-primary-foreground shadow-glow"
-          : "border border-border bg-card text-card-foreground"
-      }`}>
-        <div className="whitespace-pre-wrap">{content}</div>
-        {streaming && <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-primary-glow" />}
+    <div className="flex items-center justify-between border-b border-border px-6 py-3">
+      <div className="flex min-w-0 items-center gap-2 text-sm">
+        <Sparkles className="h-4 w-4 shrink-0 text-primary-glow" />
+        {editing ? (
+          <>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { if (draft.trim() && draft !== title) onRename(draft.trim()); setEditing(false); }
+                if (e.key === "Escape") { setDraft(title); setEditing(false); }
+              }}
+              className="min-w-0 rounded bg-surface px-2 py-0.5 text-sm font-semibold outline-none ring-1 ring-ring/40"
+              autoFocus
+            />
+            <button onClick={() => { if (draft.trim() && draft !== title) onRename(draft.trim()); setEditing(false); }} className="grid h-6 w-6 place-items-center rounded hover:bg-accent">
+              <Check className="h-3.5 w-3.5 text-success" />
+            </button>
+            <button onClick={() => { setDraft(title); setEditing(false); }} className="grid h-6 w-6 place-items-center rounded hover:bg-accent">
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="truncate font-display font-semibold">{title}</span>
+            {canRename && (
+              <button onClick={() => setEditing(true)} className="grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" title="Rename">
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
+          </>
+        )}
       </div>
-      {isUser && (
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border bg-surface text-[10px] font-bold">
-          You
-        </div>
-      )}
+      <div className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:flex">
+        <ShieldCheck className="h-3 w-3 text-success" /> e2e audited
+        <span className="mx-2 text-border">·</span>
+        <Brain className="h-3 w-3 text-primary-glow" /> memory: on
+      </div>
+    </div>
+  );
+}
+
+function ConversationSkeletons() {
+  return (
+    <div className="space-y-1.5 p-1">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-7 w-full animate-pulse rounded-md bg-surface/80" />
+      ))}
+    </div>
+  );
+}
+
+function MessageSkeleton({ align = "left" }: { align?: "left" | "right" }) {
+  return (
+    <div className={`flex gap-3 ${align === "right" ? "justify-end" : "justify-start"}`}>
+      {align === "left" && <div className="h-7 w-7 shrink-0 animate-pulse rounded-md bg-surface" />}
+      <div className="w-2/3 space-y-2">
+        <div className="h-3 w-full animate-pulse rounded bg-surface" />
+        <div className="h-3 w-5/6 animate-pulse rounded bg-surface" />
+        <div className="h-3 w-2/3 animate-pulse rounded bg-surface" />
+      </div>
     </div>
   );
 }
