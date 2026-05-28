@@ -9,7 +9,8 @@
 //      plus a small in-process TTL cache for repeated live queries.
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { routeMessage } from "@/lib/chat/router.server";
 import { webSearch, type WebSearchResult } from "@/lib/chat/web-search.server";
 import {
@@ -81,13 +82,22 @@ function gracefulStream(reqId: string, message: string, reason: string): Respons
     headers: { ...sseHeaders(), "X-Chat-Fallback": "1", "X-Chat-Fallback-Reason": reason },
   });
 }
+type Conv = { id: string; user_id: string; title: string; workspace_id: string | null; organization_id: string | null };
 
-type Conv = { id: string; user_id: string; title: string };
+function makeUserClient(token: string): SupabaseClient<Database> | null {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return null;
+  return createClient<Database>(url, key, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+  });
+}
 
-async function fetchConversation(convId: string): Promise<Conv | null> {
+async function fetchConversation(sb: SupabaseClient<Database>, convId: string): Promise<Conv | null> {
   try {
-    const { data } = await supabaseAdmin
-      .from("conversations").select("id, user_id, title")
+    const { data } = await sb
+      .from("conversations").select("id, user_id, title, workspace_id, organization_id")
       .eq("id", convId).maybeSingle();
     return (data as Conv | null) ?? null;
   } catch {
@@ -119,9 +129,15 @@ export const Route = createFileRoute("/api/chat")({
             return gracefulStream(reqId, "Your session expired. Please sign in again.", "no_token");
           }
 
+          const sb = makeUserClient(token);
+          if (!sb) {
+            log(reqId, "auth", "error", { reason: "missing_supabase_env" });
+            return gracefulStream(reqId, FRIENDLY_FALLBACK, "missing_supabase_env");
+          }
+
           let userId: string;
           try {
-            const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+            const { data: userData, error: userErr } = await sb.auth.getUser(token);
             if (userErr || !userData.user) {
               log(reqId, "auth", "warn", { reason: "invalid_token", err: userErr?.message });
               return gracefulStream(reqId, "Your session expired. Please sign in again.", "invalid_token");
@@ -157,7 +173,7 @@ export const Route = createFileRoute("/api/chat")({
           // Adaptive: routing preference learned from past outcomes can suppress live calls.
           const tParallel = Date.now();
           const [conv, memories, routingPref, liveEarly] = await Promise.all([
-            safe(() => fetchConversation(parsed.conversationId), null, "conv"),
+            safe(() => fetchConversation(sb, parsed.conversationId), null, "conv"),
             decision.needsMemory
               ? safe(() => recallMemories(userId, 8), [] as MemoryEntry[], "memory")
               : Promise.resolve<MemoryEntry[]>([]),
@@ -204,11 +220,12 @@ export const Route = createFileRoute("/api/chat")({
             const isNewConv = conv.title === "New conversation";
             void (async () => {
               try {
-                await supabaseAdmin.from("messages").insert({
+                await sb.from("messages").insert({
                   conversation_id: conv.id, user_id: userId, role: "user", content: userContent,
+                  workspace_id: conv.workspace_id, organization_id: conv.organization_id,
                 });
                 if (isNewConv) {
-                  await supabaseAdmin.from("conversations")
+                  await sb.from("conversations")
                     .update({ title: userContent.slice(0, 60).trim() }).eq("id", conv.id);
                 }
                 log(reqId, "persist", "ok", { kind: "user_message" });
@@ -274,6 +291,8 @@ export const Route = createFileRoute("/api/chat")({
           const decoder = new TextDecoder();
           let assembled = "";
           const convId = conv.id;
+          const convWorkspaceId = conv.workspace_id;
+          const convOrganizationId = conv.organization_id;
 
           const stream = new ReadableStream({
             async start(controller) {
@@ -320,10 +339,11 @@ export const Route = createFileRoute("/api/chat")({
               } finally {
                 if (assembled.trim()) {
                   try {
-                    await supabaseAdmin.from("messages").insert({
+                    await sb.from("messages").insert({
                       conversation_id: convId, user_id: userId, role: "assistant", content: assembled,
+                      workspace_id: convWorkspaceId, organization_id: convOrganizationId,
                     });
-                    await supabaseAdmin.from("conversations")
+                    await sb.from("conversations")
                       .update({ updated_at: new Date().toISOString() }).eq("id", convId);
                     log(reqId, "persist", "ok", { kind: "assistant_message", chars: assembled.length });
                   } catch (err) {
