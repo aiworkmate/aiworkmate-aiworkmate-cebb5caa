@@ -138,7 +138,7 @@ export const Route = createFileRoute("/api/chat")({
 
           // ── Stage: router (strict JSON contract; pure function, instant) ──
           const decision = routeMessage(lastUserText);
-          log(reqId, "router", "ok", decision);
+          log(reqId, "router", "ok", { ...decision });
 
           // ── Parallel: conv ownership + memory recall + (optional) live data ──
           const tParallel = Date.now();
