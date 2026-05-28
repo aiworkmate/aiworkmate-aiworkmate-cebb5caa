@@ -64,11 +64,16 @@ function ChatPage() {
     enabled: !!activeId,
   });
   const dbMessages = messagesQ.data ?? [];
+  const dbMessages = messagesQ.data ?? [];
   const localOverlay = activeId ? overlay[activeId] ?? [] : [];
-  // Merge: server messages + any overlay entries whose ids aren't yet persisted.
+  // Merge: server messages + overlay entries not yet reflected in DB.
+  // Dedupe by id OR by (role + exact content) so a streamed assistant reply
+  // stays visible until the DB refetch returns the persisted row.
   const messages: Message[] = [
     ...dbMessages,
-    ...localOverlay.filter((o) => !dbMessages.some((d) => d.id === o.id)),
+    ...localOverlay.filter(
+      (o) => !dbMessages.some((d) => d.id === o.id || (d.role === o.role && d.content === o.content)),
+    ),
   ];
 
   useEffect(() => {
@@ -141,6 +146,7 @@ function ChatPage() {
     };
     setOverlay((curr) => ({ ...curr, [convId!]: [...(curr[convId!] ?? []), optimisticUserMsg] }));
 
+    let assembled = "";
     try {
       const history = [
         ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -154,12 +160,17 @@ function ChatPage() {
         },
         body: JSON.stringify({ conversationId: convId, messages: history, attachments }),
       });
-      if (!res.ok || !res.body) { toast.error(`Chat error: ${res.status}`); return; }
+      if (!res.ok || !res.body) {
+        const errText = await res.text().catch(() => "");
+        console.error("[chat] http error", res.status, errText.slice(0, 300));
+        toast.error(`Chat error: ${res.status}`);
+        assembled = "Sorry, something went wrong. Please try again.";
+        return;
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
-      let assembled = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -179,13 +190,32 @@ function ChatPage() {
           }
         }
       }
+    } catch (err) {
+      console.error("[chat] stream failure", err);
+      toast.error("Connection lost. Please try again.");
+      if (!assembled) assembled = "Sorry, something went wrong. Please try again.";
     } finally {
+      // Pin the assembled reply into overlay so it remains visible across the
+      // brief gap before the DB refetch returns the persisted assistant row.
+      if (assembled.trim()) {
+        const finalAssistant: Message = {
+          id: `temp-asst-${Date.now()}`,
+          role: "assistant",
+          content: assembled,
+          created_at: new Date().toISOString(),
+        };
+        setOverlay((curr) => ({
+          ...curr,
+          [convId!]: [...(curr[convId!] ?? []), finalAssistant],
+        }));
+      }
       setIsStreaming(false);
       setStreamingText("");
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
-      // Drop overlay once server data refreshes — keep until next tick.
-      setTimeout(() => setOverlay((curr) => ({ ...curr, [convId!]: [] })), 400);
+      // Clear overlay later — the merge filter dedupes against DB content,
+      // so the assistant bubble stays put until the real row arrives.
+      setTimeout(() => setOverlay((curr) => ({ ...curr, [convId!]: [] })), 4000);
     }
   }
 
