@@ -34,15 +34,18 @@ function AppLayout() {
   }
 
   return (
-    <div className="flex min-h-dvh w-full bg-background">
-      <AppSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <AppTopbar />
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <Outlet />
+    <TenantProvider>
+      <div className="flex min-h-dvh w-full bg-background">
+        <AppSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <AppTopbar />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <Outlet />
+          </div>
         </div>
       </div>
-    </div>
+    </TenantProvider>
+
   );
 }
 
