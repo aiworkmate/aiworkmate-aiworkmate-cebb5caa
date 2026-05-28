@@ -57,10 +57,12 @@ export async function apiRequest<T = unknown>(path: string, opts: RequestOptions
   }
 
   const headers = await buildHeaders(opts.headers);
-  const init: RequestInit = { ...opts, headers };
+  const { body: _b, query: _q, headers: _h, ...rest } = opts;
+  const init: RequestInit = { ...rest, headers };
   if (opts.body !== undefined) {
     init.body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
   }
+
 
   const res = await fetch(url.toString(), init);
   const ctype = res.headers.get("content-type") ?? "";
