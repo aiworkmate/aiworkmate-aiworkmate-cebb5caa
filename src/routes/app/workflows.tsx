@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Workflow, Play, Pause, RotateCw, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 
-export const Route = createFileRoute("/_app/workflows")({
+export const Route = createFileRoute("/app/workflows")({
   head: () => ({ meta: [{ title: "Workflows · AI WorkMate" }] }),
   component: WorkflowsPage,
 });

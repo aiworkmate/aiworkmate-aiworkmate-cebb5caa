@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Shield, UserPlus, MoreHorizontal, Search } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 
-export const Route = createFileRoute("/_app/admin")({
+export const Route = createFileRoute("/app/admin")({
   head: () => ({ meta: [{ title: "Admin · AI WorkMate" }] }),
   component: AdminPage,
 });
