@@ -5,8 +5,8 @@ import { Search, X, Shield } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 import { endpoints, type AuditEvent } from "@/lib/api/endpoints";
 import { ApiNotConfiguredError } from "@/lib/api/client";
-import { ApiNotConfigured, EmptyState } from "@/components/empty-states";
-import { useAuth } from "@/lib/auth";
+import { ApiNotConfigured } from "@/components/empty-states";
+
 
 export const Route = createFileRoute("/app/audit")({
   head: () => ({ meta: [{ title: "Audit logs · AI WorkMate" }] }),
