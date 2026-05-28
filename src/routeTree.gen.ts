@@ -20,9 +20,11 @@ import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppMemoryRouteImport } from './routes/app/memory'
 import { Route as AppMedicalRouteImport } from './routes/app/medical'
 import { Route as AppChatRouteImport } from './routes/app/chat'
+import { Route as AppAuditRouteImport } from './routes/app/audit'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as AppWorkflowsIdRouteImport } from './routes/app/workflows.$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -79,6 +81,11 @@ const AppChatRoute = AppChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAuditRoute = AppAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -94,6 +101,11 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppWorkflowsIdRoute = AppWorkflowsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppWorkflowsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -103,13 +115,15 @@ export interface FileRoutesByFullPath {
   '/api/chat': typeof ApiChatRoute
   '/app/admin': typeof AppAdminRoute
   '/app/analytics': typeof AppAnalyticsRoute
+  '/app/audit': typeof AppAuditRoute
   '/app/chat': typeof AppChatRoute
   '/app/medical': typeof AppMedicalRoute
   '/app/memory': typeof AppMemoryRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/uploads': typeof AppUploadsRoute
-  '/app/workflows': typeof AppWorkflowsRoute
+  '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/app/': typeof AppIndexRoute
+  '/app/workflows/$id': typeof AppWorkflowsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,13 +132,15 @@ export interface FileRoutesByTo {
   '/api/chat': typeof ApiChatRoute
   '/app/admin': typeof AppAdminRoute
   '/app/analytics': typeof AppAnalyticsRoute
+  '/app/audit': typeof AppAuditRoute
   '/app/chat': typeof AppChatRoute
   '/app/medical': typeof AppMedicalRoute
   '/app/memory': typeof AppMemoryRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/uploads': typeof AppUploadsRoute
-  '/app/workflows': typeof AppWorkflowsRoute
+  '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/app': typeof AppIndexRoute
+  '/app/workflows/$id': typeof AppWorkflowsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -135,13 +151,15 @@ export interface FileRoutesById {
   '/api/chat': typeof ApiChatRoute
   '/app/admin': typeof AppAdminRoute
   '/app/analytics': typeof AppAnalyticsRoute
+  '/app/audit': typeof AppAuditRoute
   '/app/chat': typeof AppChatRoute
   '/app/medical': typeof AppMedicalRoute
   '/app/memory': typeof AppMemoryRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/uploads': typeof AppUploadsRoute
-  '/app/workflows': typeof AppWorkflowsRoute
+  '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/app/': typeof AppIndexRoute
+  '/app/workflows/$id': typeof AppWorkflowsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -153,6 +171,7 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/app/admin'
     | '/app/analytics'
+    | '/app/audit'
     | '/app/chat'
     | '/app/medical'
     | '/app/memory'
@@ -160,6 +179,7 @@ export interface FileRouteTypes {
     | '/app/uploads'
     | '/app/workflows'
     | '/app/'
+    | '/app/workflows/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -168,6 +188,7 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/app/admin'
     | '/app/analytics'
+    | '/app/audit'
     | '/app/chat'
     | '/app/medical'
     | '/app/memory'
@@ -175,6 +196,7 @@ export interface FileRouteTypes {
     | '/app/uploads'
     | '/app/workflows'
     | '/app'
+    | '/app/workflows/$id'
   id:
     | '__root__'
     | '/'
@@ -184,6 +206,7 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/app/admin'
     | '/app/analytics'
+    | '/app/audit'
     | '/app/chat'
     | '/app/medical'
     | '/app/memory'
@@ -191,6 +214,7 @@ export interface FileRouteTypes {
     | '/app/uploads'
     | '/app/workflows'
     | '/app/'
+    | '/app/workflows/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -280,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChatRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/audit': {
+      id: '/app/audit'
+      path: '/audit'
+      fullPath: '/app/audit'
+      preLoaderRoute: typeof AppAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/analytics': {
       id: '/app/analytics'
       path: '/analytics'
@@ -301,30 +332,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/workflows/$id': {
+      id: '/app/workflows/$id'
+      path: '/$id'
+      fullPath: '/app/workflows/$id'
+      preLoaderRoute: typeof AppWorkflowsIdRouteImport
+      parentRoute: typeof AppWorkflowsRoute
+    }
   }
 }
+
+interface AppWorkflowsRouteChildren {
+  AppWorkflowsIdRoute: typeof AppWorkflowsIdRoute
+}
+
+const AppWorkflowsRouteChildren: AppWorkflowsRouteChildren = {
+  AppWorkflowsIdRoute: AppWorkflowsIdRoute,
+}
+
+const AppWorkflowsRouteWithChildren = AppWorkflowsRoute._addFileChildren(
+  AppWorkflowsRouteChildren,
+)
 
 interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppAnalyticsRoute: typeof AppAnalyticsRoute
+  AppAuditRoute: typeof AppAuditRoute
   AppChatRoute: typeof AppChatRoute
   AppMedicalRoute: typeof AppMedicalRoute
   AppMemoryRoute: typeof AppMemoryRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppUploadsRoute: typeof AppUploadsRoute
-  AppWorkflowsRoute: typeof AppWorkflowsRoute
+  AppWorkflowsRoute: typeof AppWorkflowsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppAnalyticsRoute: AppAnalyticsRoute,
+  AppAuditRoute: AppAuditRoute,
   AppChatRoute: AppChatRoute,
   AppMedicalRoute: AppMedicalRoute,
   AppMemoryRoute: AppMemoryRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppUploadsRoute: AppUploadsRoute,
-  AppWorkflowsRoute: AppWorkflowsRoute,
+  AppWorkflowsRoute: AppWorkflowsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
 }
 
@@ -340,3 +392,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
