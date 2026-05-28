@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Download } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 
-export const Route = createFileRoute("/_app/analytics")({
+export const Route = createFileRoute("/app/analytics")({
   head: () => ({ meta: [{ title: "Analytics · AI WorkMate" }] }),
   component: AnalyticsPage,
 });

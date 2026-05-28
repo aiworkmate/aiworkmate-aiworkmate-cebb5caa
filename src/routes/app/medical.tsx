@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Stethoscope, AlertTriangle, FileSearch, UserCheck } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 
-export const Route = createFileRoute("/_app/medical")({
+export const Route = createFileRoute("/app/medical")({
   head: () => ({ meta: [{ title: "Medical assistive · AI WorkMate" }] }),
   component: MedicalPage,
 });

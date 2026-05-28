@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { PageHeader, EmptyState, StatusPill } from "@/components/page-primitives";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_app/uploads")({
+export const Route = createFileRoute("/app/uploads")({
   head: () => ({ meta: [{ title: "Documents · AI WorkMate" }] }),
   component: UploadsPage,
 });

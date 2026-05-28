@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { EmptyState } from "@/components/page-primitives";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_app/chat")({
+export const Route = createFileRoute("/app/chat")({
   head: () => ({ meta: [{ title: "Chat · AI WorkMate" }] }),
   component: ChatPage,
 });

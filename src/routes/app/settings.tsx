@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_app/settings")({
+export const Route = createFileRoute("/app/settings")({
   head: () => ({ meta: [{ title: "Settings · AI WorkMate" }] }),
   component: SettingsPage,
 });
