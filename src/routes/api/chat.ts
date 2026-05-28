@@ -25,6 +25,9 @@ import {
   recordRoutingOutcome,
   logResponseOutcome,
 } from "@/lib/chat/adaptive.server";
+import { liveDataCache } from "@/lib/chat/cache.server";
+import { safe, metrics } from "@/lib/chat/safe.server";
+
 
 
 
