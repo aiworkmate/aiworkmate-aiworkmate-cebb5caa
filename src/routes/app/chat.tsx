@@ -64,7 +64,6 @@ function ChatPage() {
     enabled: !!activeId,
   });
   const dbMessages = messagesQ.data ?? [];
-  const dbMessages = messagesQ.data ?? [];
   const localOverlay = activeId ? overlay[activeId] ?? [] : [];
   // Merge: server messages + overlay entries not yet reflected in DB.
   // Dedupe by id OR by (role + exact content) so a streamed assistant reply
