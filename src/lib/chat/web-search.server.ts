@@ -1,14 +1,13 @@
 // Live data fetch — enterprise stack with graceful degradation.
 //   1. Tavily (AI-optimized, primary)
 //   2. SerpAPI (Google-grade, fallback)
-//   3. DuckDuckGo Instant Answer (last-resort, no key required)
 // Any failure cascades to the next provider. Never throws.
 
 export interface WebSearchResult {
   query: string;
   summary: string;
   sources: string[];
-  provider: "tavily" | "serpapi" | "duckduckgo";
+  provider: "tavily" | "serpapi";
 }
 
 const DEFAULT_TIMEOUT = 5000;
@@ -77,29 +76,6 @@ async function serpApiSearch(query: string, timeoutMs: number): Promise<WebSearc
   return { query, summary: summary.slice(0, 2000), sources: sources.slice(0, 5), provider: "serpapi" };
 }
 
-async function duckDuckGoSearch(query: string, timeoutMs: number): Promise<WebSearchResult | null> {
-  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-  const data = await fetchJson(url, { headers: { "User-Agent": "AIWorkMate/1.0" } }, timeoutMs);
-  if (!data) return null;
-  const bits: string[] = [];
-  const sources: string[] = [];
-  if (data.Answer) bits.push(data.Answer);
-  if (data.AbstractText) bits.push(data.AbstractText);
-  if (data.AbstractURL) sources.push(data.AbstractURL);
-  const flat: Array<{ Text?: string; FirstURL?: string }> = [];
-  for (const t of data.RelatedTopics ?? []) {
-    if (t.Text) flat.push(t);
-    if (t.Topics) flat.push(...t.Topics);
-  }
-  for (const t of flat.slice(0, 4)) {
-    if (t.Text) bits.push(`• ${t.Text}`);
-    if (t.FirstURL) sources.push(t.FirstURL);
-  }
-  const summary = bits.join("\n").trim();
-  if (!summary) return null;
-  return { query, summary: summary.slice(0, 2000), sources: sources.slice(0, 5), provider: "duckduckgo" };
-}
-
 export async function webSearch(query: string, timeoutMs = DEFAULT_TIMEOUT): Promise<WebSearchResult | null> {
   const q = query.trim().slice(0, 300);
   if (!q) return null;
@@ -124,17 +100,6 @@ export async function webSearch(query: string, timeoutMs = DEFAULT_TIMEOUT): Pro
     }
   } catch (err) {
     console.warn("[web-search] serpapi error", { err: String(err) });
-  }
-
-  // 3. DuckDuckGo (last resort)
-  try {
-    const ddg = await duckDuckGoSearch(q, timeoutMs);
-    if (ddg?.summary) {
-      console.log("[web-search] hit", { provider: "duckduckgo", sources: ddg.sources.length });
-      return ddg;
-    }
-  } catch (err) {
-    console.warn("[web-search] duckduckgo error", { err: String(err) });
   }
 
   console.warn("[web-search] all providers failed", { query: q });
