@@ -129,9 +129,15 @@ export const Route = createFileRoute("/api/chat")({
             return gracefulStream(reqId, "Your session expired. Please sign in again.", "no_token");
           }
 
+          const sb = makeUserClient(token);
+          if (!sb) {
+            log(reqId, "auth", "error", { reason: "missing_supabase_env" });
+            return gracefulStream(reqId, FRIENDLY_FALLBACK, "missing_supabase_env");
+          }
+
           let userId: string;
           try {
-            const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+            const { data: userData, error: userErr } = await sb.auth.getUser(token);
             if (userErr || !userData.user) {
               log(reqId, "auth", "warn", { reason: "invalid_token", err: userErr?.message });
               return gracefulStream(reqId, "Your session expired. Please sign in again.", "invalid_token");
