@@ -1,11 +1,13 @@
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Search, Bell, ChevronDown, LogOut, User as UserIcon, Building2 } from "lucide-react";
+import { Search, Bell, ChevronDown, LogOut, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { TenantSwitcher } from "@/components/tenant-switcher";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
 
 export function AppTopbar() {
   const { user, profile, signOut } = useAuth();
