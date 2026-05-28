@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   MessageSquare, Brain, FileText, Workflow, BarChart3,
-  Shield, Settings, Stethoscope, LayoutDashboard, Plus
+  Shield, Settings, Stethoscope, LayoutDashboard, Plus, ScrollText,
 } from "lucide-react";
 
 const groups = [
@@ -26,10 +26,12 @@ const groups = [
     label: "Administration",
     items: [
       { to: "/app/admin", label: "Admin", icon: Shield },
+      { to: "/app/audit", label: "Audit logs", icon: ScrollText },
       { to: "/app/settings", label: "Settings", icon: Settings },
     ],
   },
 ];
+
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
