@@ -9,7 +9,8 @@
 //      plus a small in-process TTL cache for repeated live queries.
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { routeMessage } from "@/lib/chat/router.server";
 import { webSearch, type WebSearchResult } from "@/lib/chat/web-search.server";
 import {
