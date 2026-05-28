@@ -18,25 +18,48 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          metadata: Json
+          mode: Database["public"]["Enums"]["ai_mode"]
+          organization_id: string | null
+          summary: string | null
           title: string
           updated_at: string
           user_id: string
+          workspace_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
+          metadata?: Json
+          mode?: Database["public"]["Enums"]["ai_mode"]
+          organization_id?: string | null
+          summary?: string | null
           title?: string
           updated_at?: string
           user_id: string
+          workspace_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
+          metadata?: Json
+          mode?: Database["public"]["Enums"]["ai_mode"]
+          organization_id?: string | null
+          summary?: string | null
           title?: string
           updated_at?: string
           user_id?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversations_workspace_org_fk"
+            columns: ["workspace_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
       }
       memories: {
         Row: {
@@ -77,24 +100,48 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          is_final_response: boolean
+          metadata: Json
+          model: string | null
+          organization_id: string | null
           role: Database["public"]["Enums"]["message_role"]
+          token_estimate: number
+          tool_names: string[]
+          upload_ids: string[]
           user_id: string
+          workspace_id: string | null
         }
         Insert: {
           content: string
           conversation_id: string
           created_at?: string
           id?: string
+          is_final_response?: boolean
+          metadata?: Json
+          model?: string | null
+          organization_id?: string | null
           role: Database["public"]["Enums"]["message_role"]
+          token_estimate?: number
+          tool_names?: string[]
+          upload_ids?: string[]
           user_id: string
+          workspace_id?: string | null
         }
         Update: {
           content?: string
           conversation_id?: string
           created_at?: string
           id?: string
+          is_final_response?: boolean
+          metadata?: Json
+          model?: string | null
+          organization_id?: string | null
           role?: Database["public"]["Enums"]["message_role"]
+          token_estimate?: number
+          tool_names?: string[]
+          upload_ids?: string[]
           user_id?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -104,37 +151,139 @@ export type Database = {
             referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "messages_workspace_org_fk"
+            columns: ["workspace_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id", "organization_id"]
+          },
         ]
+      }
+      organization_members: {
+        Row: {
+          created_at: string
+          id: string
+          invited_by: string | null
+          organization_id: string
+          role: Database["public"]["Enums"]["organization_role"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id: string
+          role?: Database["public"]["Enums"]["organization_role"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id?: string
+          role?: Database["public"]["Enums"]["organization_role"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          id: string
+          metadata: Json
+          name: string
+          owner_id: string
+          plan: string
+          slug: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name: string
+          owner_id: string
+          plan?: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          owner_id?: string
+          plan?: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string
+          default_organization_id: string | null
+          default_workspace_id: string | null
           display_name: string | null
           email: string | null
           id: string
+          settings: Json
           updated_at: string
           user_id: string
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          default_organization_id?: string | null
+          default_workspace_id?: string | null
           display_name?: string | null
           email?: string | null
           id?: string
+          settings?: Json
           updated_at?: string
           user_id: string
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
+          default_organization_id?: string | null
+          default_workspace_id?: string | null
           display_name?: string | null
           email?: string | null
           id?: string
+          settings?: Json
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_default_org_fk"
+            columns: ["default_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_default_workspace_fk"
+            columns: ["default_workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       uploads: {
         Row: {
@@ -193,6 +342,88 @@ export type Database = {
         }
         Relationships: []
       }
+      workspace_members: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          role: Database["public"]["Enums"]["workspace_role"]
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          role?: Database["public"]["Enums"]["workspace_role"]
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["workspace_role"]
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_members_workspace_id_organization_id_fkey"
+            columns: ["workspace_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      workspaces: {
+        Row: {
+          created_at: string
+          created_by: string
+          default_mode: Database["public"]["Enums"]["ai_mode"]
+          id: string
+          metadata: Json
+          name: string
+          organization_id: string
+          slug: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          default_mode?: Database["public"]["Enums"]["ai_mode"]
+          id?: string
+          metadata?: Json
+          name: string
+          organization_id: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          default_mode?: Database["public"]["Enums"]["ai_mode"]
+          id?: string
+          metadata?: Json
+          name?: string
+          organization_id?: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspaces_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -207,9 +438,12 @@ export type Database = {
       }
     }
     Enums: {
+      ai_mode: "general" | "medical"
       app_role: "admin" | "member"
       message_role: "user" | "assistant" | "system"
+      organization_role: "owner" | "admin" | "member" | "viewer"
       upload_status: "uploading" | "processing" | "ready" | "failed"
+      workspace_role: "owner" | "admin" | "editor" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -337,9 +571,12 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_mode: ["general", "medical"],
       app_role: ["admin", "member"],
       message_role: ["user", "assistant", "system"],
+      organization_role: ["owner", "admin", "member", "viewer"],
       upload_status: ["uploading", "processing", "ready", "failed"],
+      workspace_role: ["owner", "admin", "editor", "viewer"],
     },
   },
 } as const
