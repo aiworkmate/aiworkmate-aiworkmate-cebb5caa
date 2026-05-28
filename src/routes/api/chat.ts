@@ -104,7 +104,6 @@ async function fetchConversation(sb: SupabaseClient<Database>, convId: string): 
     return null;
   }
 }
-}
 
 async function cachedWebSearch(query: string): Promise<WebSearchResult | null> {
   const key = query.trim().toLowerCase().slice(0, 300);
