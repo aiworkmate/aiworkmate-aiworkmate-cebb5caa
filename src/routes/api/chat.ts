@@ -330,8 +330,24 @@ export const Route = createFileRoute("/api/chat")({
                     log(reqId, "persist", "warn", { kind: "assistant_message", err: String(err) });
                   }
                 }
-                log(reqId, "llm.stream", "ok", { closed: true, totalMs: Date.now() - t0 });
+                // ── Adaptive: record outcome + reinforce memories used ──
+                const totalMs = Date.now() - t0;
+                const success = assembled.trim().length > 0;
+                void recordRoutingOutcome({
+                  userId, intent: decision.intent, liveUsed: !!live,
+                  success, latencyMs: totalMs,
+                }).catch(() => {});
+                void logResponseOutcome({
+                  userId, conversationId: convId, intent: decision.intent,
+                  liveUsed: !!live, memoryHits: memories.length,
+                  latencyMs: totalMs, chars: assembled.length, wasFallback: !success,
+                }).catch(() => {});
+                if (success && memories.length) {
+                  void reinforceMemories(memories.map((m) => m.id)).catch(() => {});
+                }
+                log(reqId, "llm.stream", "ok", { closed: true, totalMs });
                 try { controller.close(); } catch { /* already closed */ }
+
               }
             },
           });
