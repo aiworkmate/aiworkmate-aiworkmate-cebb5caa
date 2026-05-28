@@ -67,9 +67,12 @@ export type Database = {
           confidence: number
           content: string
           created_at: string
+          frequency: number
           id: string
+          last_used_at: string
           pinned: boolean
           updated_at: string
+          usefulness: number
           user_id: string
         }
         Insert: {
@@ -77,9 +80,12 @@ export type Database = {
           confidence?: number
           content: string
           created_at?: string
+          frequency?: number
           id?: string
+          last_used_at?: string
           pinned?: boolean
           updated_at?: string
+          usefulness?: number
           user_id: string
         }
         Update: {
@@ -87,9 +93,12 @@ export type Database = {
           confidence?: number
           content?: string
           created_at?: string
+          frequency?: number
           id?: string
+          last_used_at?: string
           pinned?: boolean
           updated_at?: string
+          usefulness?: number
           user_id?: string
         }
         Relationships: []
@@ -284,6 +293,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      response_outcomes: {
+        Row: {
+          chars: number
+          conversation_id: string
+          created_at: string
+          id: string
+          intent: string
+          latency_ms: number
+          live_used: boolean
+          memory_hits: number
+          user_id: string
+          was_fallback: boolean
+        }
+        Insert: {
+          chars?: number
+          conversation_id: string
+          created_at?: string
+          id?: string
+          intent: string
+          latency_ms?: number
+          live_used?: boolean
+          memory_hits?: number
+          user_id: string
+          was_fallback?: boolean
+        }
+        Update: {
+          chars?: number
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          intent?: string
+          latency_ms?: number
+          live_used?: boolean
+          memory_hits?: number
+          user_id?: string
+          was_fallback?: boolean
+        }
+        Relationships: []
+      }
+      routing_stats: {
+        Row: {
+          avg_latency_ms: number
+          created_at: string
+          failure_count: number
+          id: string
+          intent: string
+          last_used_at: string
+          live_used: boolean
+          success_count: number
+          user_id: string
+        }
+        Insert: {
+          avg_latency_ms?: number
+          created_at?: string
+          failure_count?: number
+          id?: string
+          intent: string
+          last_used_at?: string
+          live_used?: boolean
+          success_count?: number
+          user_id: string
+        }
+        Update: {
+          avg_latency_ms?: number
+          created_at?: string
+          failure_count?: number
+          id?: string
+          intent?: string
+          last_used_at?: string
+          live_used?: boolean
+          success_count?: number
+          user_id?: string
+        }
+        Relationships: []
       }
       uploads: {
         Row: {

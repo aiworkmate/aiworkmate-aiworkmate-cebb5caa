@@ -17,10 +17,19 @@ import {
   storeMemory,
   formatMemoriesForPrompt,
   extractPreference,
+  reinforceMemories,
   type MemoryEntry,
 } from "@/lib/chat/memory.server";
+import {
+  recallRoutingPreference,
+  recordRoutingOutcome,
+  logResponseOutcome,
+} from "@/lib/chat/adaptive.server";
 import { liveDataCache } from "@/lib/chat/cache.server";
 import { safe, metrics } from "@/lib/chat/safe.server";
+
+
+
 
 
 
@@ -144,18 +153,29 @@ export const Route = createFileRoute("/api/chat")({
           const decision = routeMessage(lastUserText);
           log(reqId, "router", "ok", { ...decision });
 
-          // ── Parallel: conv ownership + memory recall + (optional) live data ──
-          // Every side pipeline is wrapped in safe() so one failure can't kill the request.
+          // ── Parallel: conv ownership + memory + routing pref + (optional) live data ──
+          // Adaptive: routing preference learned from past outcomes can suppress live calls.
           const tParallel = Date.now();
-          const [conv, memories, live] = await Promise.all([
+          const [conv, memories, routingPref, liveEarly] = await Promise.all([
             safe(() => fetchConversation(parsed.conversationId), null, "conv"),
             decision.needsMemory
               ? safe(() => recallMemories(userId, 8), [] as MemoryEntry[], "memory")
               : Promise.resolve<MemoryEntry[]>([]),
+            safe(
+              () => recallRoutingPreference(userId, decision.intent),
+              { preferLive: null, avgLatency: 0, sampleSize: 0 },
+              "routing_pref",
+            ),
             decision.needsLiveData
               ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
               : Promise.resolve<WebSearchResult | null>(null),
           ]);
+          // Suppress live data when the user historically does better without it for this intent.
+          const live = routingPref.preferLive === false ? null : liveEarly;
+          log(reqId, "router", "ok", {
+            adaptive: { preferLive: routingPref.preferLive, samples: routingPref.sampleSize },
+          });
+
           log(reqId, "memory", "ok", { hits: memories.length });
           log(reqId, "live", live ? "ok" : "warn", {
             triggered: decision.needsLiveData,
@@ -310,8 +330,24 @@ export const Route = createFileRoute("/api/chat")({
                     log(reqId, "persist", "warn", { kind: "assistant_message", err: String(err) });
                   }
                 }
-                log(reqId, "llm.stream", "ok", { closed: true, totalMs: Date.now() - t0 });
+                // ── Adaptive: record outcome + reinforce memories used ──
+                const totalMs = Date.now() - t0;
+                const success = assembled.trim().length > 0;
+                void recordRoutingOutcome({
+                  userId, intent: decision.intent, liveUsed: !!live,
+                  success, latencyMs: totalMs,
+                }).catch(() => {});
+                void logResponseOutcome({
+                  userId, conversationId: convId, intent: decision.intent,
+                  liveUsed: !!live, memoryHits: memories.length,
+                  latencyMs: totalMs, chars: assembled.length, wasFallback: !success,
+                }).catch(() => {});
+                if (success && memories.length) {
+                  void reinforceMemories(memories.map((m) => m.id)).catch(() => {});
+                }
+                log(reqId, "llm.stream", "ok", { closed: true, totalMs });
                 try { controller.close(); } catch { /* already closed */ }
+
               }
             },
           });
