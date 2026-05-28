@@ -14,9 +14,6 @@ export const Route = createFileRoute("/app/audit")({
 });
 
 function AuditPage() {
-  const { roles } = useAuth();
-  const isAdmin = roles?.includes("admin");
-
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("");
   const [resource, setResource] = useState("");
@@ -26,19 +23,8 @@ function AuditPage() {
   const q = useQuery({
     queryKey: ["audit", { search, action, resource, page }],
     queryFn: () => endpoints.audit.list({ search, action, resource_type: resource, page, page_size: 25 }),
-    enabled: isAdmin,
     retry: false,
   });
-
-  if (!isAdmin) {
-    return (
-      <EmptyState
-        icon={Shield}
-        title="Admin access required"
-        description="Audit logs are restricted to organization administrators."
-      />
-    );
-  }
 
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-thin">
