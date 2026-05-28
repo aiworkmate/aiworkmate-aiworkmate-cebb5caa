@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Search, X, Shield } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 import { endpoints, type AuditEvent } from "@/lib/api/endpoints";
 import { ApiNotConfiguredError } from "@/lib/api/client";
