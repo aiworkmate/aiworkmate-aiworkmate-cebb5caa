@@ -350,7 +350,6 @@ export const Route = createFileRoute("/api/chat")({
                     log(reqId, "persist", "warn", { kind: "assistant_message", err: String(err) });
                   }
                 }
-                }
                 // ── Adaptive: record outcome + reinforce memories used ──
                 const totalMs = Date.now() - t0;
                 const success = assembled.trim().length > 0;
