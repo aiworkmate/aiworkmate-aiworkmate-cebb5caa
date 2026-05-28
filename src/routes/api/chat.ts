@@ -73,12 +73,13 @@ export const Route = createFileRoute("/api/chat")({
           }
 
           // Verify conversation ownership (best-effort; failure → graceful)
-          let conv: { id: string; user_id: string; title: string } | null = null;
+          type Conv = { id: string; user_id: string; title: string };
+          let conv: Conv | null = null;
           try {
             const { data } = await supabaseAdmin
               .from("conversations").select("id, user_id, title")
               .eq("id", parsed.conversationId).maybeSingle();
-            conv = data as typeof conv;
+            conv = (data as Conv | null) ?? null;
           } catch (err) {
             console.error("[chat] conversation lookup failed:", err);
           }
