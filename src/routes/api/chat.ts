@@ -291,6 +291,8 @@ export const Route = createFileRoute("/api/chat")({
           const decoder = new TextDecoder();
           let assembled = "";
           const convId = conv.id;
+          const convWorkspaceId = conv.workspace_id;
+          const convOrganizationId = conv.organization_id;
 
           const stream = new ReadableStream({
             async start(controller) {
