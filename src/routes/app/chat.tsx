@@ -374,29 +374,3 @@ function MessageSkeleton({ align = "left" }: { align?: "left" | "right" }) {
     </div>
   );
 }
-
-function MessageBubble({ message, onEdit, onRetry, onDelete, streaming }: { message: Message; onEdit?: (next: string) => void; onRetry?: () => void; onDelete?: () => void; streaming?: boolean }) {
-  const isUser = message.role === "user";
-  return (
-    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-gradient-primary text-[10px] font-bold text-primary-foreground shadow-glow">
-          W
-        </div>
-      )}
-      <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-        isUser
-          ? "bg-primary text-primary-foreground shadow-glow"
-          : "border border-border bg-card text-card-foreground"
-      }`}>
-        <div className="whitespace-pre-wrap">{message.content}</div>
-        {streaming && <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-primary-glow" />}
-      </div>
-      {isUser && (
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border bg-surface text-[10px] font-bold">
-          You
-        </div>
-      )}
-    </div>
-  );
-}
