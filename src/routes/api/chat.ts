@@ -14,13 +14,20 @@ import { routeMessage } from "@/lib/chat/router.server";
 import { webSearch, type WebSearchResult } from "@/lib/chat/web-search.server";
 import {
   recallMemories,
+import {
+  recallMemories,
   storeMemory,
   formatMemoriesForPrompt,
   extractPreference,
+  reinforceMemories,
   type MemoryEntry,
 } from "@/lib/chat/memory.server";
-import { liveDataCache } from "@/lib/chat/cache.server";
-import { safe, metrics } from "@/lib/chat/safe.server";
+import {
+  recallRoutingPreference,
+  recordRoutingOutcome,
+  logResponseOutcome,
+} from "@/lib/chat/adaptive.server";
+
 
 
 
