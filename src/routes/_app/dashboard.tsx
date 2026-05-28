@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
 
-export const Route = createFileRoute("/_app/")({
+export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({ meta: [{ title: "Overview · AI WorkMate" }] }),
   component: OverviewPage,
 });
