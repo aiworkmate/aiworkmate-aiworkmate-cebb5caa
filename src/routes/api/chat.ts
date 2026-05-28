@@ -173,7 +173,7 @@ export const Route = createFileRoute("/api/chat")({
           // Adaptive: routing preference learned from past outcomes can suppress live calls.
           const tParallel = Date.now();
           const [conv, memories, routingPref, liveEarly] = await Promise.all([
-            safe(() => fetchConversation(parsed.conversationId), null, "conv"),
+            safe(() => fetchConversation(sb, parsed.conversationId), null, "conv"),
             decision.needsMemory
               ? safe(() => recallMemories(userId, 8), [] as MemoryEntry[], "memory")
               : Promise.resolve<MemoryEntry[]>([]),
