@@ -28,6 +28,31 @@ export async function recallMemories(userId: string, limit = 8): Promise<MemoryE
   }
 }
 
+/** Gate before storing — keeps memory clean by only saving clear, intentional signals. */
+const MEMORY_KEYWORDS = [
+  "i prefer",
+  "i like",
+  "i love",
+  "i hate",
+  "i want",
+  "i always",
+  "i never",
+  "i usually",
+  "i work as",
+  "i am a",
+  "remember that",
+  "remember to",
+  "call me",
+  "my name is",
+  "my preferred name is",
+];
+
+export function shouldStoreMemory(text: string): boolean {
+  const t = (text ?? "").toLowerCase().trim();
+  if (t.length < 5 || t.length > 500) return false;
+  return MEMORY_KEYWORDS.some((k) => t.includes(k));
+}
+
 /** Store a short note (preference, recurring topic, correction). Best-effort. */
 export async function storeMemory(
   userId: string,
@@ -37,6 +62,7 @@ export async function storeMemory(
 ): Promise<void> {
   const trimmed = content.trim().slice(0, 500);
   if (!trimmed) return;
+  if (!shouldStoreMemory(trimmed)) return; // noise filter
   try {
     await supabaseAdmin.from("memories").insert({
       user_id: userId,
@@ -57,7 +83,7 @@ export function formatMemoriesForPrompt(entries: MemoryEntry[]): string {
 }
 
 // Heuristic extractor: pull a short "preference" line out of a user message when
-// it clearly states one. Keeps cost at zero; an LLM extractor can replace this later.
+// it clearly states one. Combined with shouldStoreMemory() for the noise filter.
 const PREF_PATTERNS = [
   /^(?:i (?:prefer|like|love|hate|always|never|usually|work as|am a)\b.{3,200})/i,
   /^(?:call me|my name is|my preferred name is)\b.{2,80}/i,

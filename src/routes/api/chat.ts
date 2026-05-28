@@ -20,6 +20,9 @@ import {
   type MemoryEntry,
 } from "@/lib/chat/memory.server";
 import { liveDataCache } from "@/lib/chat/cache.server";
+import { safe, metrics } from "@/lib/chat/safe.server";
+
+
 
 const Body = z.object({
   conversationId: z.string().uuid(),
@@ -52,6 +55,7 @@ function sseHeaders() {
 
 function gracefulStream(reqId: string, message: string, reason: string): Response {
   log(reqId, "llm.stream", "warn", { fallback: true, reason });
+  metrics.recordFallback(reason);
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
@@ -141,15 +145,21 @@ export const Route = createFileRoute("/api/chat")({
           log(reqId, "router", "ok", { ...decision });
 
           // ── Parallel: conv ownership + memory recall + (optional) live data ──
+          // Every side pipeline is wrapped in safe() so one failure can't kill the request.
           const tParallel = Date.now();
           const [conv, memories, live] = await Promise.all([
-            fetchConversation(parsed.conversationId),
-            decision.needsMemory ? recallMemories(userId, 8) : Promise.resolve<MemoryEntry[]>([]),
-            decision.needsLiveData ? cachedWebSearch(lastUserText) : Promise.resolve<WebSearchResult | null>(null),
+            safe(() => fetchConversation(parsed.conversationId), null, "conv"),
+            decision.needsMemory
+              ? safe(() => recallMemories(userId, 8), [] as MemoryEntry[], "memory")
+              : Promise.resolve<MemoryEntry[]>([]),
+            decision.needsLiveData
+              ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
+              : Promise.resolve<WebSearchResult | null>(null),
           ]);
           log(reqId, "memory", "ok", { hits: memories.length });
           log(reqId, "live", live ? "ok" : "warn", {
             triggered: decision.needsLiveData,
+            provider: live?.provider ?? null,
             sources: live?.sources.length ?? 0,
             ms: Date.now() - tParallel,
           });
