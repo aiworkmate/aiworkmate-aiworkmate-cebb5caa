@@ -220,11 +220,12 @@ export const Route = createFileRoute("/api/chat")({
             const isNewConv = conv.title === "New conversation";
             void (async () => {
               try {
-                await supabaseAdmin.from("messages").insert({
+                await sb.from("messages").insert({
                   conversation_id: conv.id, user_id: userId, role: "user", content: userContent,
+                  workspace_id: conv.workspace_id, organization_id: conv.organization_id,
                 });
                 if (isNewConv) {
-                  await supabaseAdmin.from("conversations")
+                  await sb.from("conversations")
                     .update({ title: userContent.slice(0, 60).trim() }).eq("id", conv.id);
                 }
                 log(reqId, "persist", "ok", { kind: "user_message" });
