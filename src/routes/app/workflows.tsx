@@ -1,89 +1,115 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Workflow, Play, Pause, RotateCw, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { Workflow as WorkflowIcon, Play, Pause, ArrowUpRight, AlertTriangle } from "lucide-react";
 import { PageHeader, StatusPill } from "@/components/page-primitives";
+import { endpoints, type Workflow } from "@/lib/api/endpoints";
+import { ApiNotConfiguredError } from "@/lib/api/client";
+import { ApiNotConfigured, EmptyState } from "@/components/empty-states";
+import { useTenant } from "@/lib/tenant";
 
 export const Route = createFileRoute("/app/workflows")({
   head: () => ({ meta: [{ title: "Workflows · AI WorkMate" }] }),
   component: WorkflowsPage,
 });
 
-const workflows = [
-  { id: "wf-1", name: "Intake triage", trigger: "Inbound message", actions: 4, enabled: true, runs: 1284, success: 99.2 },
-  { id: "wf-2", name: "Document indexer", trigger: "Upload created", actions: 3, enabled: true, runs: 412, success: 97.8 },
-  { id: "wf-3", name: "Daily digest", trigger: "Cron · 09:00", actions: 5, enabled: true, runs: 36, success: 100 },
-  { id: "wf-4", name: "Compliance escalation", trigger: "Memory tag: PHI", actions: 6, enabled: false, runs: 8, success: 87.5 },
-];
-
-const runs = [
-  { id: "r-9821", wf: "Intake triage", status: "success", dur: "312ms", at: "2m ago" },
-  { id: "r-9820", wf: "Document indexer", status: "success", dur: "1.4s", at: "9m ago" },
-  { id: "r-9819", wf: "Intake triage", status: "success", dur: "298ms", at: "14m ago" },
-  { id: "r-9818", wf: "Compliance escalation", status: "failed", dur: "812ms", at: "1h ago" },
-  { id: "r-9817", wf: "Daily digest", status: "success", dur: "4.2s", at: "5h ago" },
-];
-
 function WorkflowsPage() {
+  const { ready } = useTenant();
+  const q = useQuery({
+    queryKey: ["workflows"],
+    queryFn: () => endpoints.workflows.list(),
+    enabled: ready,
+    retry: false,
+  });
+
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-thin">
       <PageHeader
         eyebrow="Automation"
         title="Workflows"
-        description="Triggered actions executed by the backend orchestrator. Permission-aware end to end."
+        description="Triggers + actions executed by the backend orchestrator. Permission- and workspace-aware end to end."
         actions={
           <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-glow hover:opacity-90">
-            <Workflow className="h-3.5 w-3.5" /> New workflow
+            <WorkflowIcon className="h-3.5 w-3.5" /> New workflow
           </button>
         }
       />
 
-      <div className="grid gap-4 p-6 lg:grid-cols-[2fr_1fr]">
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-5 py-3 font-display text-sm font-semibold">All workflows</div>
-          <div className="divide-y divide-border">
-            {workflows.map((w) => (
-              <div key={w.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
-                <div className="grid h-9 w-9 place-items-center rounded-lg bg-surface-elevated text-primary-glow">
-                  <Workflow className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{w.name}</span>
-                    <StatusPill tone={w.enabled ? "success" : "neutral"}>{w.enabled ? "Active" : "Paused"}</StatusPill>
-                  </div>
-                  <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">trigger: {w.trigger} · {w.actions} actions · {w.runs.toLocaleString()} runs · {w.success}% success</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button className="grid h-8 w-8 place-items-center rounded-md border border-border bg-surface hover:bg-accent" title="Run">
-                    <Play className="h-3.5 w-3.5" />
-                  </button>
-                  <button className="grid h-8 w-8 place-items-center rounded-md border border-border bg-surface hover:bg-accent" title={w.enabled ? "Disable" : "Enable"}>
-                    {w.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 text-success" />}
-                  </button>
-                  <button className="grid h-8 w-8 place-items-center rounded-md border border-border bg-surface hover:bg-accent" title="Retry">
-                    <RotateCw className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+      <div className="p-6">
+        {q.error instanceof ApiNotConfiguredError ? (
+          <ApiNotConfigured feature="Workflows" />
+        ) : q.isLoading ? (
+          <SkeletonGrid />
+        ) : (q.data ?? []).length === 0 ? (
+          <EmptyState
+            icon={WorkflowIcon}
+            title="No workflows yet"
+            description="Create a workflow to trigger actions on conversations, uploads, or schedules."
+          />
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {q.data!.map((w) => <WorkflowCard key={w.id} w={w} />)}
           </div>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-5 py-3 font-display text-sm font-semibold">Recent runs</div>
-          <div className="divide-y divide-border">
-            {runs.map((r) => (
-              <div key={r.id} className="flex items-center gap-3 px-5 py-3 text-sm">
-                {r.status === "success" ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-destructive" />}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{r.wf}</div>
-                  <div className="font-mono text-[11px] text-muted-foreground">{r.id} · {r.dur}</div>
-                </div>
-                <div className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground"><Clock className="h-3 w-3" /> {r.at}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function WorkflowCard({ w }: { w: Workflow }) {
+  const failureRate = w.runs_total ? Math.round(((w.runs_failed ?? 0) / w.runs_total) * 1000) / 10 : 0;
+  return (
+    <Link
+      to="/app/workflows/$id"
+      params={{ id: w.id }}
+      className="group flex flex-col rounded-xl border border-border bg-card p-5 transition hover:border-primary/40 hover:bg-card/80"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-surface-elevated text-primary-glow">
+          <WorkflowIcon className="h-4 w-4" />
+        </div>
+        <StatusPill tone={w.status === "active" ? "success" : w.status === "paused" ? "neutral" : "warning"}>
+          {w.status}
+        </StatusPill>
+      </div>
+      <div className="mt-4 font-display text-base font-semibold leading-tight">{w.name}</div>
+      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{w.description || "No description"}</p>
+
+      <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-xs">
+        <Stat label="Trigger" value={w.trigger} mono />
+        <Stat label="Runs" value={(w.runs_total ?? 0).toLocaleString()} />
+        <Stat label="Failures" value={`${failureRate}%`} tone={failureRate > 5 ? "warn" : "ok"} />
+      </div>
+
+      <div className="mt-4 flex items-center gap-1">
+        <button type="button" onClick={(e) => e.preventDefault()} className="grid h-8 w-8 place-items-center rounded-md border border-border bg-surface hover:bg-accent" title={w.status === "active" ? "Pause" : "Activate"}>
+          {w.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 text-success" />}
+        </button>
+        <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground">
+          View runs <ArrowUpRight className="h-3 w-3" />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function Stat({ label, value, mono, tone }: { label: string; value: string; mono?: boolean; tone?: "ok" | "warn" }) {
+  return (
+    <div>
+      <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 truncate ${mono ? "font-mono text-[11px]" : "text-sm"} ${tone === "warn" ? "text-warning" : ""}`}>
+        {tone === "warn" && <AlertTriangle className="mr-1 inline h-3 w-3" />}
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-44 animate-pulse rounded-xl border border-border bg-card/40" />
+      ))}
     </div>
   );
 }
