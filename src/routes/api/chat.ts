@@ -339,15 +339,17 @@ export const Route = createFileRoute("/api/chat")({
               } finally {
                 if (assembled.trim()) {
                   try {
-                    await supabaseAdmin.from("messages").insert({
+                    await sb.from("messages").insert({
                       conversation_id: convId, user_id: userId, role: "assistant", content: assembled,
+                      workspace_id: convWorkspaceId, organization_id: convOrganizationId,
                     });
-                    await supabaseAdmin.from("conversations")
+                    await sb.from("conversations")
                       .update({ updated_at: new Date().toISOString() }).eq("id", convId);
                     log(reqId, "persist", "ok", { kind: "assistant_message", chars: assembled.length });
                   } catch (err) {
                     log(reqId, "persist", "warn", { kind: "assistant_message", err: String(err) });
                   }
+                }
                 }
                 // ── Adaptive: record outcome + reinforce memories used ──
                 const totalMs = Date.now() - t0;
