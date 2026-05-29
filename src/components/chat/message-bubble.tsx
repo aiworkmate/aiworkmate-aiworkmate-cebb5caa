@@ -91,7 +91,8 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
               <span className="text-xs italic">{statusLabel ?? "Thinking…"}</span>
             </div>
           ) : (
-            <div className="animate-fade-in">
+            <div className="animate-in fade-in duration-200">
+
               <Markdown content={message.content} />
             </div>
           )}
