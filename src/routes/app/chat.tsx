@@ -293,9 +293,12 @@ function ChatPage() {
 
 
     } catch (err) {
+      // Aborts are intentional (user sent a new message); don't show an error.
+      if ((err as { name?: string })?.name === "AbortError") return;
       console.error("[chat] stream failure", err);
       toast.error("Connection lost. Please try again.");
       if (!assembled) assembled = "Sorry, something went wrong. Please try again.";
+
     } finally {
       // Pin the assembled reply into overlay so it remains visible across the
       // brief gap before the DB refetch returns the persisted assistant row.
