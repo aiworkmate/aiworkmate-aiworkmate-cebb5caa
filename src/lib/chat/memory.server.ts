@@ -17,12 +17,17 @@ export interface MemoryEntry {
   usefulness?: number;
 }
 
-/** Recall top memories by composite score, then bump frequency/last_used for the hits. */
+// Daily decay multiplier — usefulness slowly fades when memories aren't reused.
+// Applied per recall against `last_used_at`, so it self-corrects without a cron job.
+const DAILY_DECAY = 0.995;
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+/** Recall top memories by composite score, then bump frequency/last_used and decay usefulness. */
 export async function recallMemories(userId: string, limit = 8): Promise<MemoryEntry[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from("memories")
-      .select("id, content, category, pinned, confidence, frequency, usefulness")
+      .select("id, content, category, pinned, confidence, frequency, usefulness, last_used_at")
       .eq("user_id", userId)
       .order("pinned", { ascending: false })
       .order("usefulness", { ascending: false })
@@ -30,26 +35,28 @@ export async function recallMemories(userId: string, limit = 8): Promise<MemoryE
       .order("updated_at", { ascending: false })
       .limit(limit);
     if (error || !data) return [];
-    const entries = data as MemoryEntry[];
-    // Fire-and-forget: bump usage signal for recalled memories.
+    const entries = data as (MemoryEntry & { last_used_at?: string })[];
+    // Fire-and-forget: bump usage signal + apply daily decay on the recalled rows.
     if (entries.length) {
-      const ids = entries.map((e) => e.id);
+      const now = Date.now();
       void (async () => {
         try {
-          // increment frequency + refresh last_used_at via RPC-less update loop
           await Promise.all(
-            entries.map((e) =>
-              supabaseAdmin
+            entries.map((e) => {
+              const lastUsed = e.last_used_at ? new Date(e.last_used_at).getTime() : now;
+              const daysIdle = Math.max(0, (now - lastUsed) / 86_400_000);
+              const decayed = clamp01((e.usefulness ?? 0.5) * Math.pow(DAILY_DECAY, daysIdle));
+              return supabaseAdmin
                 .from("memories")
                 .update({
                   frequency: (e.frequency ?? 1) + 1,
-                  last_used_at: new Date().toISOString(),
+                  usefulness: decayed,
+                  last_used_at: new Date(now).toISOString(),
                 })
-                .eq("id", e.id),
-            ),
+                .eq("id", e.id);
+            }),
           );
         } catch { /* swallow */ }
-        void ids;
       })();
     }
     return entries;
@@ -57,6 +64,7 @@ export async function recallMemories(userId: string, limit = 8): Promise<MemoryE
     return [];
   }
 }
+
 
 const MEMORY_KEYWORDS = [
   "i prefer", "i like", "i love", "i hate", "i want",
