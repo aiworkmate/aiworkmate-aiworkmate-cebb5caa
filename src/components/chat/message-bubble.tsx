@@ -15,11 +15,12 @@ interface ChatMessage {
 
 export interface ToolEvent {
   name: string;
-  status: "running" | "done" | "error" | "skipped";
-export interface ToolEvent {
-  name: string;
   status: "start" | "running" | "stream" | "done" | "error" | "skipped";
 }
+
+interface MessageBubbleProps {
+  message: ChatMessage;
+
 
   streaming?: boolean;
   statusLabel?: string;
