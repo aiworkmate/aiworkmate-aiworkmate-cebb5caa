@@ -330,8 +330,14 @@ function ChatPage() {
                 <MessageBubble
                   message={{ id: "streaming", role: "assistant", content: streamingText }}
                   streaming
+                  statusLabel={
+                    phase === "searching" ? "Searching the web…"
+                    : phase === "thinking" ? "Thinking…"
+                    : undefined
+                  }
                 />
               )}
+
             </div>
           )}
         </div>
