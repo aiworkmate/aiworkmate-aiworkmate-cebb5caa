@@ -47,6 +47,12 @@ function ChatPage() {
   // Local message overlay — optimistic user messages + assistant pin until DB persists.
   const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Race-proofing: only events whose envelope.requestId matches the active id
+  // AND whose seq is strictly greater than the last accepted seq are applied.
+  const activeRequestIdRef = useRef<string | null>(null);
+  const lastSeqRef = useRef<number>(-1);
+  const abortRef = useRef<AbortController | null>(null);
+
 
 
 
@@ -127,7 +133,16 @@ function ChatPage() {
   }
 
   async function sendMessage(text: string, attachments: MessageAttachment[]) {
-    if ((!text && attachments.length === 0) || isStreaming || !session) return;
+    if ((!text && attachments.length === 0) || !session) return;
+    // Abort any in-flight stream so its late events are dropped by the seq guard below.
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    // Reset stream-state guards. The real activeRequestId is captured from the
+    // server's first envelope; until then we accept events from any id.
+    activeRequestIdRef.current = null;
+    lastSeqRef.current = -1;
+
     let convId = activeId;
     if (!convId) {
       if (!user) return;
@@ -176,6 +191,7 @@ function ChatPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ conversationId: convId, messages: history, attachments }),
+        signal: ac.signal,
       });
       if (!res.ok || !res.body) {
         const errText = await res.text().catch(() => "");
@@ -185,7 +201,10 @@ function ChatPage() {
         return;
       }
 
-      // Header is a coarse hint; per-event `state` and `tool` updates supersede it.
+      // Capture server-issued request id from the response header as a backup;
+      // the per-event envelope is the source of truth.
+      const headerReqId = res.headers.get("X-Request-Id");
+      if (headerReqId) activeRequestIdRef.current = headerReqId;
       if (res.headers.get("X-Chat-Live") === "1") setPhase("searching");
 
       const reader = res.body.getReader();
@@ -204,14 +223,29 @@ function ChatPage() {
             if (payload === "[DONE]") continue;
             try {
               const j = JSON.parse(payload);
+              // Envelope guard: drop stale or out-of-order events from aborted
+              // requests. The first envelope we see locks the activeRequestId.
+              if (typeof j.requestId === "string") {
+                if (activeRequestIdRef.current && j.requestId !== activeRequestIdRef.current) {
+                  continue;
+                }
+                if (!activeRequestIdRef.current) activeRequestIdRef.current = j.requestId;
+              }
+              if (typeof j.seq === "number") {
+                if (j.seq <= lastSeqRef.current) continue;
+                lastSeqRef.current = j.seq;
+              }
+
               // Typed protocol: { type: "state"|"tool"|"sources"|"memory"|"token"|"done" }
+
               switch (j.type) {
                 case "state":
                   if (j.phase) setPhase(j.phase as StreamPhase);
                   break;
                 case "tool": {
                   const evt: ToolEvent = { name: j.name, status: j.status };
-                  if (evt.name === "web_search" && evt.status === "running") setPhase("searching");
+                  if (evt.name === "web_search" && (evt.status === "running" || evt.status === "start")) setPhase("searching");
+
                   setLiveTools((curr) => {
                     const next = curr.filter((t) => t.name !== evt.name);
                     next.push(evt);
@@ -259,9 +293,12 @@ function ChatPage() {
 
 
     } catch (err) {
+      // Aborts are intentional (user sent a new message); don't show an error.
+      if ((err as { name?: string })?.name === "AbortError") return;
       console.error("[chat] stream failure", err);
       toast.error("Connection lost. Please try again.");
       if (!assembled) assembled = "Sorry, something went wrong. Please try again.";
+
     } finally {
       // Pin the assembled reply into overlay so it remains visible across the
       // brief gap before the DB refetch returns the persisted assistant row.
@@ -285,10 +322,12 @@ function ChatPage() {
           [meta.messageId!]: { memoryIds: meta.memoryIds, sources: liveSources },
         }));
       }
+      if (abortRef.current === ac) abortRef.current = null;
       setIsStreaming(false);
       setStreamingText("");
       setPhase("idle");
       setLiveTools([]);
+
       // keep liveSources momentarily so they animate into the finalized bubble via responseMeta
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
