@@ -240,15 +240,19 @@ export function MessageBubble({
   );
 }
 
-function ActionButton({ onClick, label, danger, children }: { onClick: () => void; label: string; danger?: boolean; children: React.ReactNode }) {
+function ActionButton({ onClick, label, danger, active, children }: { onClick: () => void; label: string; danger?: boolean; active?: boolean; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-accent ${danger ? "hover:text-destructive" : "hover:text-foreground"}`}
+      aria-pressed={active}
+      className={`grid h-6 w-6 place-items-center rounded transition ${
+        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"
+      } ${danger ? "hover:text-destructive" : "hover:text-foreground"}`}
     >
       {children}
     </button>
   );
 }
+
