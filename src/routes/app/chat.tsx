@@ -244,7 +244,8 @@ function ChatPage() {
                   break;
                 case "tool": {
                   const evt: ToolEvent = { name: j.name, status: j.status };
-                  if (evt.name === "web_search" && evt.status === "running") setPhase("searching");
+                  if (evt.name === "web_search" && (evt.status === "running" || evt.status === "start")) setPhase("searching");
+
                   setLiveTools((curr) => {
                     const next = curr.filter((t) => t.name !== evt.name);
                     next.push(evt);
