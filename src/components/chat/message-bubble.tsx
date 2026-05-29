@@ -81,10 +81,24 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
             </div>
           ) : isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
+          ) : streaming && !message.content ? (
+            <div className="flex items-center gap-2 py-0.5 text-muted-foreground">
+              <span className="flex gap-1" aria-hidden>
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-glow [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-glow [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-glow" />
+              </span>
+              <span className="text-xs italic">{statusLabel ?? "Thinking…"}</span>
+            </div>
           ) : (
-            <Markdown content={message.content || (streaming ? "…" : "")} />
+            <div className="animate-fade-in">
+              <Markdown content={message.content} />
+            </div>
           )}
-          {streaming && <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-primary-glow align-middle" />}
+          {streaming && message.content && (
+            <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-primary-glow align-middle" />
+          )}
+
 
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
