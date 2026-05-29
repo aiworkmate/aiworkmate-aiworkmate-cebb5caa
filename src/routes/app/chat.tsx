@@ -410,26 +410,38 @@ function ChatPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
-              {messages.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  onEdit={m.role === "user" ? (next) => editAndResend(m.id, next) : undefined}
-                  onRetry={m.role === "assistant" ? retryLastAssistant : undefined}
-                  onDelete={m.id.startsWith("temp-") ? undefined : () => deleteMessage(m.id)}
-                />
-              ))}
+              {messages.map((m) => {
+                const meta = responseMeta[m.id];
+                return (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    sources={m.role === "assistant" ? meta?.sources : undefined}
+                    feedback={m.role === "assistant" ? feedbackState[m.id] ?? null : undefined}
+                    onFeedback={m.role === "assistant" && !m.id.startsWith("temp-")
+                      ? (helpful) => handleFeedback(m.id, helpful)
+                      : undefined}
+                    onEdit={m.role === "user" ? (next) => editAndResend(m.id, next) : undefined}
+                    onRetry={m.role === "assistant" ? retryLastAssistant : undefined}
+                    onDelete={m.id.startsWith("temp-") ? undefined : () => deleteMessage(m.id)}
+                  />
+                );
+              })}
               {isStreaming && (
                 <MessageBubble
                   message={{ id: "streaming", role: "assistant", content: streamingText }}
                   streaming
+                  tools={liveTools}
+                  sources={liveSources}
                   statusLabel={
                     phase === "searching" ? "Searching the web…"
+                    : phase === "generating" ? "Generating answer…"
                     : phase === "thinking" ? "Thinking…"
                     : undefined
                   }
                 />
               )}
+
 
             </div>
           )}
