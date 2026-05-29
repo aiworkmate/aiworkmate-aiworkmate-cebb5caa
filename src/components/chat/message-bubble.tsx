@@ -148,25 +148,31 @@ export function MessageBubble({
 
         {/* Source citations (assistant) */}
         {!isUser && sources && sources.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-1 animate-in fade-in duration-300">
-            {sources.slice(0, 6).map((src, i) => {
-              let host = src;
-              try { host = new URL(src).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
-              return (
-                <a
-                  key={`${src}-${i}`}
-                  href={src}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-full border border-border bg-surface/60 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                  title={src}
-                >
-                  <Globe className="h-3 w-3" /> {host}
-                </a>
-              );
-            })}
+          <div className="flex flex-col gap-1 px-1 animate-in fade-in duration-300">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+              Updated with live sources
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {sources.slice(0, 6).map((src, i) => {
+                let host = src;
+                try { host = new URL(src).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+                return (
+                  <a
+                    key={`${src}-${i}`}
+                    href={src}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-surface/60 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                    title={src}
+                  >
+                    <Globe className="h-3 w-3" /> {host}
+                  </a>
+                );
+              })}
+            </div>
           </div>
         )}
+
 
         {/* Tool + memory indicators (persisted assistant messages) */}
         {!isUser && !streaming && (message.tools_used?.length || message.memories_used?.length || message.attachments?.length) ? (
