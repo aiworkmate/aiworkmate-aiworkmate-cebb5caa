@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
+
 import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Plus, Sparkles, ShieldCheck, Brain, Pencil, Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,7 +33,7 @@ type StreamPhase = "idle" | "thinking" | "searching" | "generating" | "streaming
 function ChatPage() {
   const { user, session } = useAuth();
   const qc = useQueryClient();
-  const sendFeedback = useServerFn(submitMemoryFeedback);
+  
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -304,7 +304,7 @@ function ChatPage() {
     setFeedbackState((curr) => ({ ...curr, [messageId]: helpful ? "up" : "down" }));
     const meta = responseMeta[messageId];
     try {
-      await sendFeedback({
+      await submitMemoryFeedback({
         data: {
           messageId,
           conversationId: activeId,
