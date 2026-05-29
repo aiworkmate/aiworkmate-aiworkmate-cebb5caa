@@ -19,11 +19,16 @@ export const Route = createFileRoute("/app/chat")({
 interface Conversation { id: string; title: string; updated_at: string }
 interface Message {
   id: string;
+interface Conversation { id: string; title: string; updated_at: string }
+interface Message {
+  id: string;
   role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
   attachments?: MessageAttachment[];
 }
+
+type StreamPhase = "idle" | "thinking" | "searching" | "streaming";
 
 function ChatPage() {
   const { user, session } = useAuth();
@@ -31,9 +36,8 @@ function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  // Local message overlay — holds optimistic user messages + attachments
-  // (DB schema doesn't persist attachments yet; backend will own this later).
-  const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
+  const [phase, setPhase] = useState<StreamPhase>("idle");
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const conversationsQ = useQuery<Conversation[]>({
