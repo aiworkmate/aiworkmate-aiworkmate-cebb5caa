@@ -19,9 +19,6 @@ export const Route = createFileRoute("/app/chat")({
 interface Conversation { id: string; title: string; updated_at: string }
 interface Message {
   id: string;
-interface Conversation { id: string; title: string; updated_at: string }
-interface Message {
-  id: string;
   role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
@@ -37,8 +34,10 @@ function ChatPage() {
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [phase, setPhase] = useState<StreamPhase>("idle");
-
+  // Local message overlay — optimistic user messages + assistant pin until DB persists.
+  const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
 
   const conversationsQ = useQuery<Conversation[]>({
     queryKey: ["conversations", user?.id],
