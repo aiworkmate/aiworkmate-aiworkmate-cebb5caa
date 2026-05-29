@@ -169,10 +169,13 @@ export const Route = createFileRoute("/api/chat")({
           const decision = routeMessage(lastUserText);
           log(reqId, "router", "ok", { ...decision });
 
-          // ── Parallel: conv ownership + memory + routing pref + (optional) live data ──
-          // Adaptive: routing preference learned from past outcomes can suppress live calls.
+          // ── Parallel: conv ownership + memory + routing pref. Live is raced separately. ──
           const tParallel = Date.now();
-          const [conv, memories, routingPref, liveEarly] = await Promise.all([
+          const livePromise: Promise<WebSearchResult | null> = decision.needsLiveData
+            ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
+            : Promise.resolve<WebSearchResult | null>(null);
+
+          const [conv, memories, routingPref] = await Promise.all([
             safe(() => fetchConversation(sb, parsed.conversationId), null, "conv"),
             decision.needsMemory
               ? safe(() => recallMemories(userId, 8), [] as MemoryEntry[], "memory")
@@ -182,30 +185,38 @@ export const Route = createFileRoute("/api/chat")({
               { preferLive: null, avgLatency: 0, sampleSize: 0 },
               "routing_pref",
             ),
-            decision.needsLiveData
-              ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
-              : Promise.resolve<WebSearchResult | null>(null),
           ]);
-          // Suppress live data when the user historically does better without it for this intent.
+
+          // 700ms TTFT gate: include live in the initial prompt ONLY if it wins the race.
+          // If it resolves later, we emit a progressive `sources` event from inside the stream.
+          const LIVE_GATE_MS = 700;
+          const liveEarly = decision.needsLiveData && routingPref.preferLive !== false
+            ? await Promise.race<WebSearchResult | null>([
+                livePromise,
+                new Promise<null>((r) => setTimeout(() => r(null), LIVE_GATE_MS)),
+              ])
+            : null;
           const live = routingPref.preferLive === false ? null : liveEarly;
+          const liveDeferred = decision.needsLiveData && routingPref.preferLive !== false && !liveEarly;
+
           log(reqId, "router", "ok", {
             adaptive: { preferLive: routingPref.preferLive, samples: routingPref.sampleSize },
           });
-
           log(reqId, "memory", "ok", { hits: memories.length });
           log(reqId, "live", live ? "ok" : "warn", {
             triggered: decision.needsLiveData,
             provider: live?.provider ?? null,
             sources: live?.sources.length ?? 0,
+            deferred: liveDeferred,
             ms: Date.now() - tParallel,
           });
-          // Placeholder for the future tool layer.
           log(reqId, "tools", "ok", { invoked: 0 });
 
           if (!conv || conv.user_id !== userId) {
             log(reqId, "router", "warn", { reason: !conv ? "not_found" : "forbidden" });
             return gracefulStream(reqId, "This conversation is no longer available.", "conv_unavailable");
           }
+
 
           const apiKey = process.env.LOVABLE_API_KEY;
           if (!apiKey) {
