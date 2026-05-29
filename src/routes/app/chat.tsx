@@ -236,8 +236,8 @@ function ChatPage() {
                 lastSeqRef.current = j.seq;
               }
 
-              const j = JSON.parse(payload);
               // Typed protocol: { type: "state"|"tool"|"sources"|"memory"|"token"|"done" }
+
               switch (j.type) {
                 case "state":
                   if (j.phase) setPhase(j.phase as StreamPhase);
