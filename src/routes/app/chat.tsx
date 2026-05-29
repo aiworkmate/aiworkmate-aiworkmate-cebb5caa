@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Plus, Sparkles, ShieldCheck, Brain, Pencil, Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,9 +8,11 @@ import { useAuth } from "@/lib/auth";
 import { EmptyState } from "@/components/page-primitives";
 import { toast } from "sonner";
 import { Composer } from "@/components/chat/composer";
-import { MessageBubble } from "@/components/chat/message-bubble";
+import { MessageBubble, type ToolEvent } from "@/components/chat/message-bubble";
 import { ConversationItem } from "@/components/chat/conversation-item";
+import { submitMemoryFeedback } from "@/lib/chat/feedback.functions";
 import type { MessageAttachment } from "@/lib/api/endpoints";
+
 
 export const Route = createFileRoute("/app/chat")({
   head: () => ({ meta: [{ title: "Chat · AI WorkMate" }] }),
@@ -25,18 +28,26 @@ interface Message {
   attachments?: MessageAttachment[];
 }
 
-type StreamPhase = "idle" | "thinking" | "searching" | "streaming";
+type StreamPhase = "idle" | "thinking" | "searching" | "generating" | "streaming";
 
 function ChatPage() {
   const { user, session } = useAuth();
   const qc = useQueryClient();
+  const sendFeedback = useServerFn(submitMemoryFeedback);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [phase, setPhase] = useState<StreamPhase>("idle");
+  const [liveTools, setLiveTools] = useState<ToolEvent[]>([]);
+  const [liveSources, setLiveSources] = useState<string[]>([]);
+  // Map of assistant message id -> {memoryIds, sources} captured from the SSE `done` event.
+  // Used to attribute feedback to the memories that were actually surfaced.
+  const [responseMeta, setResponseMeta] = useState<Record<string, { memoryIds: string[]; sources: string[] }>>({});
+  const [feedbackState, setFeedbackState] = useState<Record<string, "up" | "down">>({});
   // Local message overlay — optimistic user messages + assistant pin until DB persists.
   const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
 
 
   const conversationsQ = useQuery<Conversation[]>({
@@ -139,6 +150,8 @@ function ChatPage() {
     setIsStreaming(true);
     setStreamingText("");
     setPhase("thinking");
+    setLiveTools([]);
+    setLiveSources([]);
 
     const optimisticUserMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -150,6 +163,7 @@ function ChatPage() {
     setOverlay((curr) => ({ ...curr, [convId!]: [...(curr[convId!] ?? []), optimisticUserMsg] }));
 
     let assembled = "";
+    let doneMeta: { messageId: string | null; memoryIds: string[] } | null = null;
     try {
       const history = [
         ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -171,7 +185,7 @@ function ChatPage() {
         return;
       }
 
-      // Backend signals when it consulted live web data.
+      // Header is a coarse hint; per-event `state` and `tool` updates supersede it.
       if (res.headers.get("X-Chat-Live") === "1") setPhase("searching");
 
       const reader = res.body.getReader();
@@ -190,16 +204,59 @@ function ChatPage() {
             if (payload === "[DONE]") continue;
             try {
               const j = JSON.parse(payload);
-              if (j.delta) {
-                assembled += j.delta;
-                setStreamingText(assembled);
-                setPhase("streaming");
+              // Typed protocol: { type: "state"|"tool"|"sources"|"memory"|"token"|"done" }
+              switch (j.type) {
+                case "state":
+                  if (j.phase) setPhase(j.phase as StreamPhase);
+                  break;
+                case "tool": {
+                  const evt: ToolEvent = { name: j.name, status: j.status };
+                  if (evt.name === "web_search" && evt.status === "running") setPhase("searching");
+                  setLiveTools((curr) => {
+                    const next = curr.filter((t) => t.name !== evt.name);
+                    next.push(evt);
+                    return next;
+                  });
+                  if (Array.isArray(j.sources) && j.sources.length) {
+                    setLiveSources((curr) => Array.from(new Set([...curr, ...j.sources])));
+                  }
+                  break;
+                }
+                case "sources":
+                  if (Array.isArray(j.sources)) {
+                    setLiveSources((curr) => Array.from(new Set([...curr, ...j.sources])));
+                  }
+                  break;
+                case "memory":
+                  // surfaced count is informational; ids are also delivered on `done`.
+                  break;
+                case "token":
+                  if (j.delta) {
+                    assembled += j.delta;
+                    setStreamingText(assembled);
+                    setPhase("streaming");
+                  }
+                  break;
+                case "done":
+                  doneMeta = {
+                    messageId: j.messageId ?? null,
+                    memoryIds: Array.isArray(j.memoryIds) ? j.memoryIds : [],
+                  };
+                  break;
+                default:
+                  // Legacy { delta } fallback for older builds.
+                  if (j.delta) {
+                    assembled += j.delta;
+                    setStreamingText(assembled);
+                    setPhase("streaming");
+                  }
+                  if (j.error) toast.error("Stream error");
               }
-              if (j.error) toast.error("Stream error");
-            } catch {}
+            } catch { /* keepalive */ }
           }
         }
       }
+
 
     } catch (err) {
       console.error("[chat] stream failure", err);
@@ -220,17 +277,53 @@ function ChatPage() {
           [convId!]: [...(curr[convId!] ?? []), finalAssistant],
         }));
       }
+      // Attribute response meta so feedback knows which memories were used.
+      if (doneMeta?.messageId) {
+        const meta = doneMeta;
+        setResponseMeta((curr) => ({
+          ...curr,
+          [meta.messageId!]: { memoryIds: meta.memoryIds, sources: liveSources },
+        }));
+      }
       setIsStreaming(false);
       setStreamingText("");
       setPhase("idle");
-
+      setLiveTools([]);
+      // keep liveSources momentarily so they animate into the finalized bubble via responseMeta
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
-      // Clear overlay later — the merge filter dedupes against DB content,
-      // so the assistant bubble stays put until the real row arrives.
-      setTimeout(() => setOverlay((curr) => ({ ...curr, [convId!]: [] })), 4000);
+      setTimeout(() => {
+        setOverlay((curr) => ({ ...curr, [convId!]: [] }));
+        setLiveSources([]);
+      }, 4000);
     }
   }
+
+  async function handleFeedback(messageId: string, helpful: boolean) {
+    // Optimistic UI; server fn records + adjusts memory weights.
+    setFeedbackState((curr) => ({ ...curr, [messageId]: helpful ? "up" : "down" }));
+    const meta = responseMeta[messageId];
+    try {
+      await sendFeedback({
+        data: {
+          messageId,
+          conversationId: activeId,
+          memoryIds: meta?.memoryIds ?? [],
+          helpful,
+        },
+      });
+      toast.success(helpful ? "Thanks — boosted those memories." : "Got it — we'll use those less.");
+    } catch (err) {
+      console.error("[feedback] failed", err);
+      toast.error("Couldn't save feedback");
+      setFeedbackState((curr) => {
+        const next = { ...curr };
+        delete next[messageId];
+        return next;
+      });
+    }
+  }
+
 
   async function retryLastAssistant() {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
@@ -317,26 +410,38 @@ function ChatPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
-              {messages.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  onEdit={m.role === "user" ? (next) => editAndResend(m.id, next) : undefined}
-                  onRetry={m.role === "assistant" ? retryLastAssistant : undefined}
-                  onDelete={m.id.startsWith("temp-") ? undefined : () => deleteMessage(m.id)}
-                />
-              ))}
+              {messages.map((m) => {
+                const meta = responseMeta[m.id];
+                return (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    sources={m.role === "assistant" ? meta?.sources : undefined}
+                    feedback={m.role === "assistant" ? feedbackState[m.id] ?? null : undefined}
+                    onFeedback={m.role === "assistant" && !m.id.startsWith("temp-")
+                      ? (helpful) => handleFeedback(m.id, helpful)
+                      : undefined}
+                    onEdit={m.role === "user" ? (next) => editAndResend(m.id, next) : undefined}
+                    onRetry={m.role === "assistant" ? retryLastAssistant : undefined}
+                    onDelete={m.id.startsWith("temp-") ? undefined : () => deleteMessage(m.id)}
+                  />
+                );
+              })}
               {isStreaming && (
                 <MessageBubble
                   message={{ id: "streaming", role: "assistant", content: streamingText }}
                   streaming
+                  tools={liveTools}
+                  sources={liveSources}
                   statusLabel={
                     phase === "searching" ? "Searching the web…"
+                    : phase === "generating" ? "Generating answer…"
                     : phase === "thinking" ? "Thinking…"
                     : undefined
                   }
                 />
               )}
+
 
             </div>
           )}

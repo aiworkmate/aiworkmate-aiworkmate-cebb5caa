@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, Check, RotateCw, Pencil, Trash2, Brain, Wrench, Paperclip } from "lucide-react";
+import { Copy, Check, RotateCw, Pencil, Trash2, Brain, Wrench, Paperclip, Globe, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { MessageAttachmentChip } from "./attachment-card";
 import type { Message } from "@/lib/api/endpoints";
@@ -13,10 +13,19 @@ interface ChatMessage {
   memories_used?: Message["memories_used"];
 }
 
+export interface ToolEvent {
+  name: string;
+  status: "running" | "done" | "error" | "skipped";
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
   statusLabel?: string;
+  tools?: ToolEvent[];
+  sources?: string[];
+  feedback?: "up" | "down" | null;
+  onFeedback?: (helpful: boolean) => void;
   onCopy?: () => void;
   onRetry?: () => void;
   onEdit?: (newContent: string) => void;
@@ -27,7 +36,11 @@ interface MessageBubbleProps {
  * Single chat message with markdown body, attachments, lightweight
  * tool/memory indicators (no chain-of-thought), and hover actions.
  */
-export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
+export function MessageBubble({
+  message, streaming, statusLabel, tools, sources, feedback, onFeedback,
+  onCopy, onRetry, onEdit, onDelete,
+}: MessageBubbleProps) {
+
 
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -108,9 +121,52 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
               ))}
             </div>
           )}
+
+          {/* Live tool indicators (streaming only) */}
+          {!isUser && streaming && tools && tools.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5 animate-in fade-in duration-200">
+              {tools.map((t) => (
+                <span
+                  key={t.name}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-surface/60 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
+                >
+                  {t.name === "web_search" ? <Globe className="h-3 w-3 text-primary-glow" /> : <Wrench className="h-3 w-3" />}
+                  {t.name.replace(/_/g, " ")}
+                  <span className={`ml-1 h-1.5 w-1.5 rounded-full ${
+                    t.status === "running" ? "animate-pulse bg-primary-glow"
+                    : t.status === "done" ? "bg-success"
+                    : t.status === "error" ? "bg-destructive"
+                    : "bg-muted-foreground/40"
+                  }`} />
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Tool + memory indicators (assistant only, never chain-of-thought) */}
+        {/* Source citations (assistant) */}
+        {!isUser && sources && sources.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1 animate-in fade-in duration-300">
+            {sources.slice(0, 6).map((src, i) => {
+              let host = src;
+              try { host = new URL(src).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+              return (
+                <a
+                  key={`${src}-${i}`}
+                  href={src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-surface/60 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  title={src}
+                >
+                  <Globe className="h-3 w-3" /> {host}
+                </a>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tool + memory indicators (persisted assistant messages) */}
         {!isUser && !streaming && (message.tools_used?.length || message.memories_used?.length || message.attachments?.length) ? (
           <div className="flex flex-wrap items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             {message.memories_used && message.memories_used.length > 0 && (
@@ -132,9 +188,9 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
           </div>
         ) : null}
 
-        {/* Hover actions */}
+        {/* Hover actions + feedback */}
         {!editing && !streaming && (
-          <div className={`flex gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 ${isUser ? "flex-row-reverse" : ""}`}>
+          <div className={`flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 ${isUser ? "flex-row-reverse" : ""}`}>
             <ActionButton onClick={handleCopy} label={copied ? "Copied" : "Copy"}>
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </ActionButton>
@@ -148,6 +204,24 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
                 <RotateCw className="h-3 w-3" />
               </ActionButton>
             )}
+            {!isUser && onFeedback && (
+              <>
+                <ActionButton
+                  onClick={() => onFeedback(true)}
+                  label="Helpful"
+                  active={feedback === "up"}
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                </ActionButton>
+                <ActionButton
+                  onClick={() => onFeedback(false)}
+                  label="Not helpful"
+                  active={feedback === "down"}
+                >
+                  <ThumbsDown className="h-3 w-3" />
+                </ActionButton>
+              </>
+            )}
             {onDelete && (
               <ActionButton onClick={onDelete} label="Delete" danger>
                 <Trash2 className="h-3 w-3" />
@@ -155,6 +229,7 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
             )}
           </div>
         )}
+
       </div>
       {isUser && (
         <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border bg-surface text-[10px] font-bold">
@@ -165,15 +240,19 @@ export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry
   );
 }
 
-function ActionButton({ onClick, label, danger, children }: { onClick: () => void; label: string; danger?: boolean; children: React.ReactNode }) {
+function ActionButton({ onClick, label, danger, active, children }: { onClick: () => void; label: string; danger?: boolean; active?: boolean; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-accent ${danger ? "hover:text-destructive" : "hover:text-foreground"}`}
+      aria-pressed={active}
+      className={`grid h-6 w-6 place-items-center rounded transition ${
+        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"
+      } ${danger ? "hover:text-destructive" : "hover:text-foreground"}`}
     >
       {children}
     </button>
   );
 }
+

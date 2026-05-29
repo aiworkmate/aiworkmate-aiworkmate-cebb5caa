@@ -286,18 +286,45 @@ export const Route = createFileRoute("/api/chat")({
             return gracefulStream(reqId, FRIENDLY_FALLBACK, `upstream_${upstream.status}`);
           }
 
-          // ── Stage: llm.stream — pass tokens through unchanged ───────────
+          // ── Stage: llm.stream — typed SSE events + token deltas ─────────
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();
           let assembled = "";
           const convId = conv.id;
           const convWorkspaceId = conv.workspace_id;
           const convOrganizationId = conv.organization_id;
+          const memoryIds = memories.map((m) => m.id);
+
+          const send = (controller: ReadableStreamDefaultController, event: Record<string, unknown>) => {
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            } catch { /* closed */ }
+          };
 
           const stream = new ReadableStream({
             async start(controller) {
+              // ── Prelude events: tell the client what we did before the LLM call ──
+              send(controller, { type: "state", phase: "thinking", reqId });
+              if (decision.needsLiveData) {
+                send(controller, {
+                  type: "tool",
+                  name: "web_search",
+                  status: live ? "done" : "skipped",
+                  sources: live?.sources ?? [],
+                  provider: live?.provider ?? null,
+                });
+                if (live && live.sources.length) {
+                  send(controller, { type: "sources", sources: live.sources, provider: live.provider });
+                }
+              }
+              if (memories.length) {
+                send(controller, { type: "memory", used: memories.length, ids: memoryIds });
+              }
+              send(controller, { type: "state", phase: "generating" });
+
               const reader = upstream.body!.getReader();
               let buffer = "";
+              let firstTokenAt: number | null = null;
               try {
                 while (true) {
                   const { done, value } = await reader.read();
@@ -309,16 +336,18 @@ export const Route = createFileRoute("/api/chat")({
                     buffer = buffer.slice(idx + 1);
                     if (!line.startsWith("data:")) continue;
                     const payload = line.slice(5).trim();
-                    if (payload === "[DONE]") {
-                      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                      continue;
-                    }
+                    if (payload === "[DONE]") continue;
                     try {
                       const json = JSON.parse(payload);
                       const delta = json.choices?.[0]?.delta?.content ?? "";
                       if (delta) {
+                        if (firstTokenAt === null) {
+                          firstTokenAt = Date.now();
+                          log(reqId, "llm.stream", "ok", { ttftMs: firstTokenAt - t0 });
+                        }
                         assembled += delta;
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`));
+                        // `delta` key kept for legacy clients; `type: "token"` is canonical.
+                        send(controller, { type: "token", delta });
                       }
                     } catch { /* keepalive — ignore */ }
                   }
@@ -327,22 +356,20 @@ export const Route = createFileRoute("/api/chat")({
               } catch (err) {
                 log(reqId, "llm.stream", "error", { err: String(err), assembledChars: assembled.length });
                 if (!assembled) {
-                  try {
-                    controller.enqueue(
-                      encoder.encode(`data: ${JSON.stringify({
-                        delta: FRIENDLY_FALLBACK, isFallback: true, reason: "stream_failed",
-                      })}\n\n`),
-                    );
-                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                  } catch { /* ignore */ }
+                  send(controller, {
+                    type: "token", delta: FRIENDLY_FALLBACK,
+                    isFallback: true, reason: "stream_failed",
+                  });
                 }
               } finally {
+                let assistantMessageId: string | null = null;
                 if (assembled.trim()) {
                   try {
-                    await sb.from("messages").insert({
+                    const { data: inserted } = await sb.from("messages").insert({
                       conversation_id: convId, user_id: userId, role: "assistant", content: assembled,
                       workspace_id: convWorkspaceId, organization_id: convOrganizationId,
-                    });
+                    }).select("id").single();
+                    assistantMessageId = (inserted as { id: string } | null)?.id ?? null;
                     await sb.from("conversations")
                       .update({ updated_at: new Date().toISOString() }).eq("id", convId);
                     log(reqId, "persist", "ok", { kind: "assistant_message", chars: assembled.length });
@@ -363,14 +390,24 @@ export const Route = createFileRoute("/api/chat")({
                   latencyMs: totalMs, chars: assembled.length, wasFallback: !success,
                 }).catch(() => {});
                 if (success && memories.length) {
-                  void reinforceMemories(memories.map((m) => m.id)).catch(() => {});
+                  void reinforceMemories(memoryIds).catch(() => {});
                 }
+                send(controller, {
+                  type: "done",
+                  messageId: assistantMessageId,
+                  memoryIds,
+                  intent: decision.intent,
+                  liveUsed: !!live,
+                  ttfbMs: firstTokenAt ? firstTokenAt - t0 : null,
+                  totalMs,
+                });
+                try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
                 log(reqId, "llm.stream", "ok", { closed: true, totalMs });
                 try { controller.close(); } catch { /* already closed */ }
-
               }
             },
           });
+
 
           return new Response(stream, {
             status: 200,

@@ -103,6 +103,42 @@ export type Database = {
         }
         Relationships: []
       }
+      memory_feedback: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          helpful: boolean
+          id: string
+          impact: number
+          memory_ids: string[]
+          message_id: string | null
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          helpful: boolean
+          id?: string
+          impact?: number
+          memory_ids?: string[]
+          message_id?: string | null
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          helpful?: boolean
+          id?: string
+          impact?: number
+          memory_ids?: string[]
+          message_id?: string | null
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
