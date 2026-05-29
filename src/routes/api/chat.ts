@@ -306,21 +306,26 @@ export const Route = createFileRoute("/api/chat")({
           const convOrganizationId = conv.organization_id;
           const memoryIds = memories.map((m) => m.id);
 
-          const send = (controller: ReadableStreamDefaultController, event: Record<string, unknown>) => {
+          // Every SSE event carries { v, requestId, seq, ts } envelope so the client
+          // can reject stale events from aborted requests and enforce ordering.
+          let seq = 0;
+          const send = (controller: ReadableStreamDefaultController, payload: Record<string, unknown>) => {
             try {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+              const env = { v: 1, requestId: reqId, seq: seq++, ts: Date.now(), ...payload };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(env)}\n\n`));
             } catch { /* closed */ }
           };
 
           const stream = new ReadableStream({
             async start(controller) {
               // ── Prelude events: tell the client what we did before the LLM call ──
-              send(controller, { type: "state", phase: "thinking", reqId });
+              send(controller, { type: "state", phase: "thinking" });
               if (decision.needsLiveData) {
+                // Reserved tool-status enum: "start" | "stream" | "done" | "error" | "skipped".
                 send(controller, {
                   type: "tool",
                   name: "web_search",
-                  status: live ? "done" : "skipped",
+                  status: live ? "done" : liveDeferred ? "start" : "skipped",
                   sources: live?.sources ?? [],
                   provider: live?.provider ?? null,
                 });
@@ -333,9 +338,29 @@ export const Route = createFileRoute("/api/chat")({
               }
               send(controller, { type: "state", phase: "generating" });
 
+              // Deferred live data: if Tavily lost the 700ms race, emit `tool`+`sources`
+              // events asynchronously once it resolves — purely additive UI signal,
+              // does not re-prompt the model.
+              let progressiveSources: string[] = [];
+              if (liveDeferred) {
+                void livePromise.then((late) => {
+                  if (!late || !late.sources.length) {
+                    send(controller, { type: "tool", name: "web_search", status: "skipped" });
+                    return;
+                  }
+                  progressiveSources = late.sources;
+                  send(controller, {
+                    type: "tool", name: "web_search", status: "done",
+                    sources: late.sources, provider: late.provider,
+                  });
+                  send(controller, { type: "sources", sources: late.sources, provider: late.provider });
+                }).catch(() => {});
+              }
+
               const reader = upstream.body!.getReader();
               let buffer = "";
               let firstTokenAt: number | null = null;
+              let errorStage: string | undefined;
               try {
                 while (true) {
                   const { done, value } = await reader.read();
@@ -354,7 +379,14 @@ export const Route = createFileRoute("/api/chat")({
                       if (delta) {
                         if (firstTokenAt === null) {
                           firstTokenAt = Date.now();
-                          log(reqId, "llm.stream", "ok", { ttftMs: firstTokenAt - t0 });
+                          // Telemetry: TTFT
+                          console.log("[chat:telemetry:ttft]", {
+                            requestId: reqId,
+                            ttftMs: firstTokenAt - t0,
+                            intent: decision.intent,
+                            usedLive: !!live,
+                            memoryCount: memories.length,
+                          });
                         }
                         assembled += delta;
                         // `delta` key kept for legacy clients; `type: "token"` is canonical.
@@ -365,6 +397,7 @@ export const Route = createFileRoute("/api/chat")({
                 }
                 log(reqId, "llm.stream", "ok", { chars: assembled.length, ms: Date.now() - llmStart });
               } catch (err) {
+                errorStage = "llm";
                 log(reqId, "llm.stream", "error", { err: String(err), assembledChars: assembled.length });
                 if (!assembled) {
                   send(controller, {
@@ -385,6 +418,7 @@ export const Route = createFileRoute("/api/chat")({
                       .update({ updated_at: new Date().toISOString() }).eq("id", convId);
                     log(reqId, "persist", "ok", { kind: "assistant_message", chars: assembled.length });
                   } catch (err) {
+                    if (!errorStage) errorStage = "persist";
                     log(reqId, "persist", "warn", { kind: "assistant_message", err: String(err) });
                   }
                 }
@@ -408,9 +442,20 @@ export const Route = createFileRoute("/api/chat")({
                   messageId: assistantMessageId,
                   memoryIds,
                   intent: decision.intent,
-                  liveUsed: !!live,
+                  liveUsed: !!live || progressiveSources.length > 0,
+                  sources: live?.sources ?? progressiveSources,
                   ttfbMs: firstTokenAt ? firstTokenAt - t0 : null,
                   totalMs,
+                });
+                // Telemetry: per-request summary
+                console.log("[chat:telemetry:done]", {
+                  requestId: reqId,
+                  ttftMs: firstTokenAt ? firstTokenAt - t0 : null,
+                  totalMs,
+                  usedLive: !!live || progressiveSources.length > 0,
+                  memoryCount: memories.length,
+                  fallbackUsed: !success,
+                  errorStage,
                 });
                 try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
                 log(reqId, "llm.stream", "ok", { closed: true, totalMs });
@@ -418,6 +463,7 @@ export const Route = createFileRoute("/api/chat")({
               }
             },
           });
+
 
 
           return new Response(stream, {
