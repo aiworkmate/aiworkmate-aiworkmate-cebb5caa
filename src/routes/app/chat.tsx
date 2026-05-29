@@ -138,6 +138,7 @@ function ChatPage() {
 
     setIsStreaming(true);
     setStreamingText("");
+    setPhase("thinking");
 
     const optimisticUserMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -170,6 +171,9 @@ function ChatPage() {
         return;
       }
 
+      // Backend signals when it consulted live web data.
+      if (res.headers.get("X-Chat-Live") === "1") setPhase("searching");
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
@@ -186,12 +190,17 @@ function ChatPage() {
             if (payload === "[DONE]") continue;
             try {
               const j = JSON.parse(payload);
-              if (j.delta) { assembled += j.delta; setStreamingText(assembled); }
+              if (j.delta) {
+                assembled += j.delta;
+                setStreamingText(assembled);
+                setPhase("streaming");
+              }
               if (j.error) toast.error("Stream error");
             } catch {}
           }
         }
       }
+
     } catch (err) {
       console.error("[chat] stream failure", err);
       toast.error("Connection lost. Please try again.");
