@@ -103,7 +103,8 @@ export async function storeMemory(
         .from("memories")
         .update({
           frequency: ((existing as { frequency?: number }).frequency ?? 1) + 1,
-          usefulness: Math.min(1, ((existing as { usefulness?: number }).usefulness ?? 0.5) + 0.05),
+          usefulness: clamp01(((existing as { usefulness?: number }).usefulness ?? 0.5) + 0.05),
+
           last_used_at: new Date().toISOString(),
           confidence: Math.max(confidence, 0.7),
         })
