@@ -33,7 +33,7 @@ type StreamPhase = "idle" | "thinking" | "searching" | "generating" | "streaming
 function ChatPage() {
   const { user, session } = useAuth();
   const qc = useQueryClient();
-  const sendFeedback = useServerFn(submitMemoryFeedback);
+  
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
