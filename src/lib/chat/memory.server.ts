@@ -136,10 +136,10 @@ export async function reinforceMemories(memoryIds: string[]): Promise<void> {
     await Promise.all(
       (data as { id: string; usefulness: number }[]).map((m) =>
         supabaseAdmin
+          .from("memories")
           .update({ usefulness: clamp01((m.usefulness ?? 0.5) + 0.03) })
-
-          .update({ usefulness: Math.min(1, (m.usefulness ?? 0.5) + 0.03) })
           .eq("id", m.id),
+
       ),
     );
   } catch { /* swallow */ }
