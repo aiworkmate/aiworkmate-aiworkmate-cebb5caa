@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, Check, RotateCw, Pencil, Trash2, Brain, Wrench, Paperclip } from "lucide-react";
+import { Copy, Check, RotateCw, Pencil, Trash2, Brain, Wrench, Paperclip, Globe, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { MessageAttachmentChip } from "./attachment-card";
 import type { Message } from "@/lib/api/endpoints";
@@ -13,10 +13,19 @@ interface ChatMessage {
   memories_used?: Message["memories_used"];
 }
 
+export interface ToolEvent {
+  name: string;
+  status: "running" | "done" | "error" | "skipped";
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
   statusLabel?: string;
+  tools?: ToolEvent[];
+  sources?: string[];
+  feedback?: "up" | "down" | null;
+  onFeedback?: (helpful: boolean) => void;
   onCopy?: () => void;
   onRetry?: () => void;
   onEdit?: (newContent: string) => void;
@@ -27,7 +36,11 @@ interface MessageBubbleProps {
  * Single chat message with markdown body, attachments, lightweight
  * tool/memory indicators (no chain-of-thought), and hover actions.
  */
-export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
+export function MessageBubble({
+  message, streaming, statusLabel, tools, sources, feedback, onFeedback,
+  onCopy, onRetry, onEdit, onDelete,
+}: MessageBubbleProps) {
+
 
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
