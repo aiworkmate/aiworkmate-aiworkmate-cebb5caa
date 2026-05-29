@@ -16,14 +16,16 @@ interface ChatMessage {
 interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
+interface MessageBubbleProps {
+  message: ChatMessage;
+  streaming?: boolean;
+  statusLabel?: string;
   onCopy?: () => void;
   onRetry?: () => void;
   onEdit?: (newContent: string) => void;
   onDelete?: () => void;
 }
 
-/**
- * Single chat message with markdown body, attachments, lightweight
  * tool/memory indicators (no chain-of-thought), and hover actions.
  */
 export function MessageBubble({ message, streaming, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
