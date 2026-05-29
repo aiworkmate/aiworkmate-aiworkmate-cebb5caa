@@ -150,6 +150,8 @@ function ChatPage() {
     setIsStreaming(true);
     setStreamingText("");
     setPhase("thinking");
+    setLiveTools([]);
+    setLiveSources([]);
 
     const optimisticUserMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -161,6 +163,7 @@ function ChatPage() {
     setOverlay((curr) => ({ ...curr, [convId!]: [...(curr[convId!] ?? []), optimisticUserMsg] }));
 
     let assembled = "";
+    let doneMeta: { messageId: string | null; memoryIds: string[] } | null = null;
     try {
       const history = [
         ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -182,7 +185,7 @@ function ChatPage() {
         return;
       }
 
-      // Backend signals when it consulted live web data.
+      // Header is a coarse hint; per-event `state` and `tool` updates supersede it.
       if (res.headers.get("X-Chat-Live") === "1") setPhase("searching");
 
       const reader = res.body.getReader();
@@ -201,16 +204,59 @@ function ChatPage() {
             if (payload === "[DONE]") continue;
             try {
               const j = JSON.parse(payload);
-              if (j.delta) {
-                assembled += j.delta;
-                setStreamingText(assembled);
-                setPhase("streaming");
+              // Typed protocol: { type: "state"|"tool"|"sources"|"memory"|"token"|"done" }
+              switch (j.type) {
+                case "state":
+                  if (j.phase) setPhase(j.phase as StreamPhase);
+                  break;
+                case "tool": {
+                  const evt: ToolEvent = { name: j.name, status: j.status };
+                  if (evt.name === "web_search" && evt.status === "running") setPhase("searching");
+                  setLiveTools((curr) => {
+                    const next = curr.filter((t) => t.name !== evt.name);
+                    next.push(evt);
+                    return next;
+                  });
+                  if (Array.isArray(j.sources) && j.sources.length) {
+                    setLiveSources((curr) => Array.from(new Set([...curr, ...j.sources])));
+                  }
+                  break;
+                }
+                case "sources":
+                  if (Array.isArray(j.sources)) {
+                    setLiveSources((curr) => Array.from(new Set([...curr, ...j.sources])));
+                  }
+                  break;
+                case "memory":
+                  // surfaced count is informational; ids are also delivered on `done`.
+                  break;
+                case "token":
+                  if (j.delta) {
+                    assembled += j.delta;
+                    setStreamingText(assembled);
+                    setPhase("streaming");
+                  }
+                  break;
+                case "done":
+                  doneMeta = {
+                    messageId: j.messageId ?? null,
+                    memoryIds: Array.isArray(j.memoryIds) ? j.memoryIds : [],
+                  };
+                  break;
+                default:
+                  // Legacy { delta } fallback for older builds.
+                  if (j.delta) {
+                    assembled += j.delta;
+                    setStreamingText(assembled);
+                    setPhase("streaming");
+                  }
+                  if (j.error) toast.error("Stream error");
               }
-              if (j.error) toast.error("Stream error");
-            } catch {}
+            } catch { /* keepalive */ }
           }
         }
       }
+
 
     } catch (err) {
       console.error("[chat] stream failure", err);
