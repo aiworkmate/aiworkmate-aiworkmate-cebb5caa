@@ -25,16 +25,19 @@ interface Message {
   attachments?: MessageAttachment[];
 }
 
+type StreamPhase = "idle" | "thinking" | "searching" | "streaming";
+
 function ChatPage() {
   const { user, session } = useAuth();
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  // Local message overlay — holds optimistic user messages + attachments
-  // (DB schema doesn't persist attachments yet; backend will own this later).
+  const [phase, setPhase] = useState<StreamPhase>("idle");
+  // Local message overlay — optimistic user messages + assistant pin until DB persists.
   const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
 
   const conversationsQ = useQuery<Conversation[]>({
     queryKey: ["conversations", user?.id],
@@ -135,6 +138,7 @@ function ChatPage() {
 
     setIsStreaming(true);
     setStreamingText("");
+    setPhase("thinking");
 
     const optimisticUserMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -167,6 +171,9 @@ function ChatPage() {
         return;
       }
 
+      // Backend signals when it consulted live web data.
+      if (res.headers.get("X-Chat-Live") === "1") setPhase("searching");
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
@@ -183,12 +190,17 @@ function ChatPage() {
             if (payload === "[DONE]") continue;
             try {
               const j = JSON.parse(payload);
-              if (j.delta) { assembled += j.delta; setStreamingText(assembled); }
+              if (j.delta) {
+                assembled += j.delta;
+                setStreamingText(assembled);
+                setPhase("streaming");
+              }
               if (j.error) toast.error("Stream error");
             } catch {}
           }
         }
       }
+
     } catch (err) {
       console.error("[chat] stream failure", err);
       toast.error("Connection lost. Please try again.");
@@ -210,6 +222,8 @@ function ChatPage() {
       }
       setIsStreaming(false);
       setStreamingText("");
+      setPhase("idle");
+
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       // Clear overlay later — the merge filter dedupes against DB content,
@@ -316,8 +330,14 @@ function ChatPage() {
                 <MessageBubble
                   message={{ id: "streaming", role: "assistant", content: streamingText }}
                   streaming
+                  statusLabel={
+                    phase === "searching" ? "Searching the web…"
+                    : phase === "thinking" ? "Thinking…"
+                    : undefined
+                  }
                 />
               )}
+
             </div>
           )}
         </div>

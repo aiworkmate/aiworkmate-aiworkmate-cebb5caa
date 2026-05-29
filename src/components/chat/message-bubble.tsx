@@ -16,6 +16,7 @@ interface ChatMessage {
 interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
+  statusLabel?: string;
   onCopy?: () => void;
   onRetry?: () => void;
   onEdit?: (newContent: string) => void;
@@ -26,7 +27,8 @@ interface MessageBubbleProps {
  * Single chat message with markdown body, attachments, lightweight
  * tool/memory indicators (no chain-of-thought), and hover actions.
  */
-export function MessageBubble({ message, streaming, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
+export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
+
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -79,10 +81,25 @@ export function MessageBubble({ message, streaming, onCopy, onRetry, onEdit, onD
             </div>
           ) : isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
+          ) : streaming && !message.content ? (
+            <div className="flex items-center gap-2 py-0.5 text-muted-foreground">
+              <span className="flex gap-1" aria-hidden>
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-glow [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-glow [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-glow" />
+              </span>
+              <span className="text-xs italic">{statusLabel ?? "Thinking…"}</span>
+            </div>
           ) : (
-            <Markdown content={message.content || (streaming ? "…" : "")} />
+            <div className="animate-in fade-in duration-200">
+
+              <Markdown content={message.content} />
+            </div>
           )}
-          {streaming && <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-primary-glow align-middle" />}
+          {streaming && message.content && (
+            <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-primary-glow align-middle" />
+          )}
+
 
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
