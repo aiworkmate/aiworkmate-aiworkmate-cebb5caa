@@ -191,6 +191,7 @@ function ChatPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ conversationId: convId, messages: history, attachments }),
+        signal: ac.signal,
       });
       if (!res.ok || !res.body) {
         const errText = await res.text().catch(() => "");
@@ -200,7 +201,10 @@ function ChatPage() {
         return;
       }
 
-      // Header is a coarse hint; per-event `state` and `tool` updates supersede it.
+      // Capture server-issued request id from the response header as a backup;
+      // the per-event envelope is the source of truth.
+      const headerReqId = res.headers.get("X-Request-Id");
+      if (headerReqId) activeRequestIdRef.current = headerReqId;
       if (res.headers.get("X-Chat-Live") === "1") setPhase("searching");
 
       const reader = res.body.getReader();
@@ -218,6 +222,20 @@ function ChatPage() {
             const payload = line.slice(5).trim();
             if (payload === "[DONE]") continue;
             try {
+              const j = JSON.parse(payload);
+              // Envelope guard: drop stale or out-of-order events from aborted
+              // requests. The first envelope we see locks the activeRequestId.
+              if (typeof j.requestId === "string") {
+                if (activeRequestIdRef.current && j.requestId !== activeRequestIdRef.current) {
+                  continue;
+                }
+                if (!activeRequestIdRef.current) activeRequestIdRef.current = j.requestId;
+              }
+              if (typeof j.seq === "number") {
+                if (j.seq <= lastSeqRef.current) continue;
+                lastSeqRef.current = j.seq;
+              }
+
               const j = JSON.parse(payload);
               // Typed protocol: { type: "state"|"tool"|"sources"|"memory"|"token"|"done" }
               switch (j.type) {
