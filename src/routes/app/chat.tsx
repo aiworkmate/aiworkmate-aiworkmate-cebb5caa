@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Plus, Sparkles, ShieldCheck, Brain, Pencil, Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,9 +8,11 @@ import { useAuth } from "@/lib/auth";
 import { EmptyState } from "@/components/page-primitives";
 import { toast } from "sonner";
 import { Composer } from "@/components/chat/composer";
-import { MessageBubble } from "@/components/chat/message-bubble";
+import { MessageBubble, type ToolEvent } from "@/components/chat/message-bubble";
 import { ConversationItem } from "@/components/chat/conversation-item";
+import { submitMemoryFeedback } from "@/lib/chat/feedback.functions";
 import type { MessageAttachment } from "@/lib/api/endpoints";
+
 
 export const Route = createFileRoute("/app/chat")({
   head: () => ({ meta: [{ title: "Chat · AI WorkMate" }] }),
