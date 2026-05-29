@@ -324,7 +324,6 @@ function ChatPage() {
     }
   }
 
-  }
 
   async function retryLastAssistant() {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
