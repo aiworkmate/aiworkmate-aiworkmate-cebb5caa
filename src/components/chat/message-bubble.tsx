@@ -16,9 +16,6 @@ interface ChatMessage {
 interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
-interface MessageBubbleProps {
-  message: ChatMessage;
-  streaming?: boolean;
   statusLabel?: string;
   onCopy?: () => void;
   onRetry?: () => void;
@@ -26,9 +23,12 @@ interface MessageBubbleProps {
   onDelete?: () => void;
 }
 
+/**
+ * Single chat message with markdown body, attachments, lightweight
  * tool/memory indicators (no chain-of-thought), and hover actions.
  */
-export function MessageBubble({ message, streaming, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
+export function MessageBubble({ message, streaming, statusLabel, onCopy, onRetry, onEdit, onDelete }: MessageBubbleProps) {
+
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
