@@ -28,18 +28,26 @@ interface Message {
   attachments?: MessageAttachment[];
 }
 
-type StreamPhase = "idle" | "thinking" | "searching" | "streaming";
+type StreamPhase = "idle" | "thinking" | "searching" | "generating" | "streaming";
 
 function ChatPage() {
   const { user, session } = useAuth();
   const qc = useQueryClient();
+  const sendFeedback = useServerFn(submitMemoryFeedback);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [phase, setPhase] = useState<StreamPhase>("idle");
+  const [liveTools, setLiveTools] = useState<ToolEvent[]>([]);
+  const [liveSources, setLiveSources] = useState<string[]>([]);
+  // Map of assistant message id -> {memoryIds, sources} captured from the SSE `done` event.
+  // Used to attribute feedback to the memories that were actually surfaced.
+  const [responseMeta, setResponseMeta] = useState<Record<string, { memoryIds: string[]; sources: string[] }>>({});
+  const [feedbackState, setFeedbackState] = useState<Record<string, "up" | "down">>({});
   // Local message overlay — optimistic user messages + assistant pin until DB persists.
   const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
 
 
   const conversationsQ = useQuery<Conversation[]>({
