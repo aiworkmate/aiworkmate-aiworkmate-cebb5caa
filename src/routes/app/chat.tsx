@@ -277,16 +277,53 @@ function ChatPage() {
           [convId!]: [...(curr[convId!] ?? []), finalAssistant],
         }));
       }
+      // Attribute response meta so feedback knows which memories were used.
+      if (doneMeta?.messageId) {
+        const meta = doneMeta;
+        setResponseMeta((curr) => ({
+          ...curr,
+          [meta.messageId!]: { memoryIds: meta.memoryIds, sources: liveSources },
+        }));
+      }
       setIsStreaming(false);
       setStreamingText("");
       setPhase("idle");
-
+      setLiveTools([]);
+      // keep liveSources momentarily so they animate into the finalized bubble via responseMeta
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
-      // Clear overlay later — the merge filter dedupes against DB content,
-      // so the assistant bubble stays put until the real row arrives.
-      setTimeout(() => setOverlay((curr) => ({ ...curr, [convId!]: [] })), 4000);
+      setTimeout(() => {
+        setOverlay((curr) => ({ ...curr, [convId!]: [] }));
+        setLiveSources([]);
+      }, 4000);
     }
+  }
+
+  async function handleFeedback(messageId: string, helpful: boolean) {
+    // Optimistic UI; server fn records + adjusts memory weights.
+    setFeedbackState((curr) => ({ ...curr, [messageId]: helpful ? "up" : "down" }));
+    const meta = responseMeta[messageId];
+    try {
+      await sendFeedback({
+        data: {
+          messageId,
+          conversationId: activeId,
+          memoryIds: meta?.memoryIds ?? [],
+          helpful,
+        },
+      });
+      toast.success(helpful ? "Thanks — boosted those memories." : "Got it — we'll use those less.");
+    } catch (err) {
+      console.error("[feedback] failed", err);
+      toast.error("Couldn't save feedback");
+      setFeedbackState((curr) => {
+        const next = { ...curr };
+        delete next[messageId];
+        return next;
+      });
+    }
+  }
+
   }
 
   async function retryLastAssistant() {
