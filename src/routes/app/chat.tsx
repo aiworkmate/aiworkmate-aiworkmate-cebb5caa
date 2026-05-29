@@ -322,10 +322,12 @@ function ChatPage() {
           [meta.messageId!]: { memoryIds: meta.memoryIds, sources: liveSources },
         }));
       }
+      if (abortRef.current === ac) abortRef.current = null;
       setIsStreaming(false);
       setStreamingText("");
       setPhase("idle");
       setLiveTools([]);
+
       // keep liveSources momentarily so they animate into the finalized bubble via responseMeta
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
