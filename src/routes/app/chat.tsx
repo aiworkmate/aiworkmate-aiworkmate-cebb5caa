@@ -222,6 +222,8 @@ function ChatPage() {
       }
       setIsStreaming(false);
       setStreamingText("");
+      setPhase("idle");
+
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       // Clear overlay later — the merge filter dedupes against DB content,
