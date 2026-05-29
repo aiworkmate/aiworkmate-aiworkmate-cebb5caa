@@ -304,7 +304,7 @@ function ChatPage() {
     setFeedbackState((curr) => ({ ...curr, [messageId]: helpful ? "up" : "down" }));
     const meta = responseMeta[messageId];
     try {
-      await sendFeedback({
+      await submitMemoryFeedback({
         data: {
           messageId,
           conversationId: activeId,
