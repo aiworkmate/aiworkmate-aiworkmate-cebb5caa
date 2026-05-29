@@ -133,7 +133,16 @@ function ChatPage() {
   }
 
   async function sendMessage(text: string, attachments: MessageAttachment[]) {
-    if ((!text && attachments.length === 0) || isStreaming || !session) return;
+    if ((!text && attachments.length === 0) || !session) return;
+    // Abort any in-flight stream so its late events are dropped by the seq guard below.
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    // Reset stream-state guards. The real activeRequestId is captured from the
+    // server's first envelope; until then we accept events from any id.
+    activeRequestIdRef.current = null;
+    lastSeqRef.current = -1;
+
     let convId = activeId;
     if (!convId) {
       if (!user) return;
