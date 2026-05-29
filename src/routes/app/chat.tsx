@@ -47,6 +47,12 @@ function ChatPage() {
   // Local message overlay — optimistic user messages + assistant pin until DB persists.
   const [overlay, setOverlay] = useState<Record<string, Message[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Race-proofing: only events whose envelope.requestId matches the active id
+  // AND whose seq is strictly greater than the last accepted seq are applied.
+  const activeRequestIdRef = useRef<string | null>(null);
+  const lastSeqRef = useRef<number>(-1);
+  const abortRef = useRef<AbortController | null>(null);
+
 
 
 
