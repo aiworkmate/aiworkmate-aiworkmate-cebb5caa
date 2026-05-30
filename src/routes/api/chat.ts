@@ -537,6 +537,8 @@ export const Route = createFileRoute("/api/chat")({
                 if (success) {
                   const candidates = extractMemoryCandidates(lastUserText, assembled);
                   if (candidates.length) void persistMemoryCandidates(userId, candidates).catch(() => {});
+                  // Context Intelligence: fire-and-forget rolling summary refresh.
+                  void maybeSummarizeConversation({ conversationId: convId }).catch(() => {});
                 }
                 send(controller, {
                   type: "done",
