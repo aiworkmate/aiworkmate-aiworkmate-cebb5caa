@@ -1,6 +1,6 @@
 // Server route - streams chat completions from Lovable AI Gateway.
 // Stability layers stay on top of the existing architecture: auth, strict routing,
-// memory, live data, streaming, persistence, and adaptive learning.
+// memory, live data, streaming, persistence, adaptive learning, and admin controls.
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -23,6 +23,7 @@ import {
 import { liveDataCache } from "@/lib/chat/cache.server";
 import { safe, metrics } from "@/lib/chat/safe.server";
 import { requestChatCompletion } from "@/lib/chat/model.server";
+import { getAiControlForUser, type AiControlSettings } from "@/lib/admin/ai-control.server";
 
 const Body = z.object({
   conversationId: z.string().uuid(),
@@ -34,6 +35,12 @@ const Body = z.object({
 
 const FRIENDLY_FALLBACK = "Sorry, something went wrong. Please try again.";
 const LIVE_GATE_MS = 700;
+const DEFAULT_AI_CONTROL: AiControlSettings = {
+  modelOverride: null,
+  systemOverride: null,
+  forceLiveData: false,
+  forceMemory: false,
+};
 
 type Stage =
   | "auth" | "validate" | "router" | "memory" | "tools"
@@ -108,8 +115,6 @@ async function cachedWebSearch(query: string): Promise<WebSearchResult | null> {
   const hit = liveDataCache.get(key) as WebSearchResult | undefined;
   if (hit !== undefined) return hit;
   const result = await webSearch(query);
-  // Do not cache provider failures. A transient Tavily/SerpAPI miss should not suppress
-  // live data for the same user question for the next five minutes.
   if (result) liveDataCache.set(key, result);
   return result;
 }
@@ -135,6 +140,7 @@ export const Route = createFileRoute("/api/chat")({
           }
 
           let userId: string;
+          let userEmail: string | null = null;
           try {
             const { data: userData, error: userErr } = await sb.auth.getUser(token);
             if (userErr || !userData.user) {
@@ -142,11 +148,18 @@ export const Route = createFileRoute("/api/chat")({
               return gracefulStream(reqId, "Your session expired. Please sign in again.", "invalid_token");
             }
             userId = userData.user.id;
+            userEmail = userData.user.email ?? null;
             log(reqId, "auth", "ok", { userId });
           } catch (err) {
             log(reqId, "auth", "error", { err: String(err) });
             return gracefulStream(reqId, FRIENDLY_FALLBACK, "auth_exception");
           }
+
+          const aiControl = await safe(
+            () => getAiControlForUser(userId, { email: userEmail ?? undefined, sub: userId }),
+            DEFAULT_AI_CONTROL,
+            "admin_control",
+          );
 
           let parsed: z.infer<typeof Body>;
           try {
@@ -160,16 +173,28 @@ export const Route = createFileRoute("/api/chat")({
           const lastUser = [...parsed.messages].reverse().find((m) => m.role === "user");
           const lastUserText = lastUser?.content ?? "";
           const decision = routeMessage(lastUserText);
-          log(reqId, "router", "ok", { ...decision });
+          const needsLiveData = decision.needsLiveData || aiControl.forceLiveData;
+          const needsMemory = decision.needsMemory || aiControl.forceMemory;
+          log(reqId, "router", "ok", {
+            ...decision,
+            needsLiveData,
+            needsMemory,
+            adminControl: {
+              modelOverride: Boolean(aiControl.modelOverride),
+              systemOverride: Boolean(aiControl.systemOverride),
+              forceLiveData: aiControl.forceLiveData,
+              forceMemory: aiControl.forceMemory,
+            },
+          });
 
           const tParallel = Date.now();
-          const livePromise: Promise<WebSearchResult | null> = decision.needsLiveData
+          const livePromise: Promise<WebSearchResult | null> = needsLiveData
             ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
             : Promise.resolve<WebSearchResult | null>(null);
 
           const [conv, memories, routingPref] = await Promise.all([
             safe(() => fetchConversation(sb, parsed.conversationId), null, "conv"),
-            decision.needsMemory
+            needsMemory
               ? safe(() => recallMemories(userId, 8, lastUserText), [] as MemoryEntry[], "memory")
               : Promise.resolve<MemoryEntry[]>([]),
             safe(
@@ -179,19 +204,20 @@ export const Route = createFileRoute("/api/chat")({
             ),
           ]);
 
-          const liveEarly = decision.needsLiveData && routingPref.preferLive !== false
+          const shouldAttemptLive = needsLiveData && (routingPref.preferLive !== false || aiControl.forceLiveData);
+          const liveEarly = shouldAttemptLive
             ? await Promise.race<WebSearchResult | null>([
                 livePromise,
                 new Promise<null>((r) => setTimeout(() => r(null), LIVE_GATE_MS)),
               ])
             : null;
-          const live = routingPref.preferLive === false ? null : liveEarly;
-          const liveDeferred = decision.needsLiveData && routingPref.preferLive !== false && !liveEarly;
+          const live = routingPref.preferLive === false && !aiControl.forceLiveData ? null : liveEarly;
+          const liveDeferred = shouldAttemptLive && !liveEarly;
 
           log(reqId, "router", "ok", { adaptive: { preferLive: routingPref.preferLive, samples: routingPref.sampleSize } });
           log(reqId, "memory", "ok", { hits: memories.length });
           log(reqId, "live", live ? "ok" : "warn", {
-            triggered: decision.needsLiveData,
+            triggered: needsLiveData,
             provider: live?.provider ?? null,
             sources: live?.sources.length ?? 0,
             deferred: liveDeferred,
@@ -236,7 +262,7 @@ export const Route = createFileRoute("/api/chat")({
           }
 
           const contextBlocks: string[] = [
-            "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Use available memory only when relevant. Cite live-data sources when provided. Provide only the final answer.",
+            aiControl.systemOverride || "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Use available memory only when relevant. Cite live-data sources when provided. Provide only the final answer.",
           ];
           const memBlock = formatMemoriesForPrompt(memories);
           if (memBlock) contextBlocks.push(memBlock);
@@ -258,6 +284,7 @@ export const Route = createFileRoute("/api/chat")({
                 apiKey,
                 messages: [systemPrompt, ...parsed.messages],
                 signal: controller.signal,
+                preferredModels: aiControl.modelOverride ? [aiControl.modelOverride] : [],
               });
               upstream = result.response;
               model = result.model;
@@ -309,7 +336,7 @@ export const Route = createFileRoute("/api/chat")({
           const stream = new ReadableStream({
             async start(controller) {
               send(controller, { type: "state", phase: "thinking" });
-              if (decision.needsLiveData) {
+              if (needsLiveData) {
                 send(controller, {
                   type: "tool",
                   name: "web_search",
@@ -447,7 +474,7 @@ export const Route = createFileRoute("/api/chat")({
               ...sseHeaders(),
               "X-Request-Id": reqId,
               "X-Chat-Intent": decision.intent,
-              "X-Chat-Live": decision.needsLiveData ? "1" : "0",
+              "X-Chat-Live": needsLiveData ? "1" : "0",
               "X-Chat-Memory": String(memories.length),
             },
           });

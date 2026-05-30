@@ -5,6 +5,7 @@ export interface ChatCompletionRequest {
   apiKey: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   signal?: AbortSignal;
+  preferredModels?: string[];
 }
 
 export interface ChatCompletionResult {
@@ -25,8 +26,9 @@ const DEFAULT_MODEL_CANDIDATES = [
 
 let cachedWorkingModel: string | null = null;
 
-function configuredModels(): string[] {
+function configuredModels(preferredModels: string[] = []): string[] {
   const configured = [
+    ...preferredModels,
     process.env.AI_WORKMATE_MODEL,
     process.env.LOVABLE_MODEL,
     process.env.CHAT_MODEL,
@@ -36,9 +38,11 @@ function configuredModels(): string[] {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  const ordered = cachedWorkingModel
-    ? [cachedWorkingModel, ...configured, ...DEFAULT_MODEL_CANDIDATES]
-    : [...configured, ...DEFAULT_MODEL_CANDIDATES];
+  const ordered = configured.length > 0
+    ? [...configured, ...DEFAULT_MODEL_CANDIDATES]
+    : cachedWorkingModel
+      ? [cachedWorkingModel, ...DEFAULT_MODEL_CANDIDATES]
+      : DEFAULT_MODEL_CANDIDATES;
 
   return Array.from(new Set(ordered));
 }
@@ -53,8 +57,9 @@ export async function requestChatCompletion({
   apiKey,
   messages,
   signal,
+  preferredModels = [],
 }: ChatCompletionRequest): Promise<ChatCompletionResult> {
-  const models = configuredModels();
+  const models = configuredModels(preferredModels);
   const attemptedModels: string[] = [];
   let last: { response: Response; model: string } | null = null;
 
