@@ -55,7 +55,7 @@ async function upsertStructured({ userId, content, category, confidence, usefuln
         .ilike("content", `${prefix.replace(/[%_]/g, " ")}%`)
         .limit(1)
         .maybeSingle();
-      existing = (data as typeof existing) ?? null;
+      existing = (data as { id: string; frequency?: number; usefulness?: number; confidence?: number } | null) ?? null;
     }
 
     if (existing) {
