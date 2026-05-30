@@ -150,7 +150,7 @@ export const saveAdminAiControl = createServerFn({ method: "POST" })
 
     await supabaseAdmin
       .from("profiles")
-      .update({ settings: { ...currentSettings, aiControl: nextControl } as Json })
+      .update({ settings: { ...currentSettings, aiControl: nextControl } as unknown as Json })
       .eq("user_id", context.userId);
 
     return { ok: true, settings: nextControl };

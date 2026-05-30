@@ -340,7 +340,7 @@ export async function recordAdaptiveLearning(params: {
 
     await supabaseAdmin
       .from("profiles")
-      .update({ settings: { ...settings, aiLearning: next } as Json })
+      .update({ settings: { ...settings, aiLearning: next } as unknown as Json })
       .eq("user_id", params.userId);
   } catch { /* swallow */ }
 }
