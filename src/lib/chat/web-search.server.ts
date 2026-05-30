@@ -80,29 +80,40 @@ async function serpApiSearch(query: string, timeoutMs: number): Promise<WebSearc
 export async function webSearch(query: string, timeoutMs = DEFAULT_TIMEOUT): Promise<WebSearchResult | null> {
   const q = query.trim().slice(0, 300);
   if (!q) return null;
+  const startedAt = Date.now();
 
-  // 1. Tavily (primary)
   try {
+    console.log("[web-search] attempt", { provider: "tavily", query: q, timeoutMs });
     const tavily = await tavilySearch(q, timeoutMs);
     if (tavily?.summary) {
-      console.log("[web-search] hit", { provider: "tavily", sources: tavily.sources.length });
+      console.log("[web-search] hit", {
+        provider: "tavily",
+        sources: tavily.sources.length,
+        ms: Date.now() - startedAt,
+      });
       return tavily;
     }
+    console.warn("[web-search] miss", { provider: "tavily", ms: Date.now() - startedAt });
   } catch (err) {
-    console.warn("[web-search] tavily error", { err: String(err) });
+    console.warn("[web-search] tavily error", { err: String(err), ms: Date.now() - startedAt });
   }
 
-  // 2. SerpAPI (fallback)
   try {
+    console.log("[web-search] attempt", { provider: "serpapi", query: q, timeoutMs });
     const serp = await serpApiSearch(q, timeoutMs);
     if (serp?.summary) {
-      console.log("[web-search] hit", { provider: "serpapi", sources: serp.sources.length });
+      console.log("[web-search] hit", {
+        provider: "serpapi",
+        sources: serp.sources.length,
+        ms: Date.now() - startedAt,
+      });
       return serp;
     }
+    console.warn("[web-search] miss", { provider: "serpapi", ms: Date.now() - startedAt });
   } catch (err) {
-    console.warn("[web-search] serpapi error", { err: String(err) });
+    console.warn("[web-search] serpapi error", { err: String(err), ms: Date.now() - startedAt });
   }
 
-  console.warn("[web-search] all providers failed", { query: q });
+  console.warn("[web-search] all providers failed", { query: q, ms: Date.now() - startedAt });
   return null;
 }

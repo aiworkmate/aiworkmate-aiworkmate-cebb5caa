@@ -39,7 +39,10 @@ const Body = z.object({
 });
 
 const FRIENDLY_FALLBACK = "Sorry, something went wrong. Please try again.";
-const LIVE_GATE_MS = 700;
+const LIVE_OPTIONAL_GATE_MS = 700;
+const LIVE_REQUIRED_GATE_MS = 5200;
+const LIVE_OPTIONAL_PROVIDER_TIMEOUT_MS = 1800;
+const LIVE_REQUIRED_PROVIDER_TIMEOUT_MS = 2500;
 const DEFAULT_AI_CONTROL: AiControlSettings = {
   modelOverride: null,
   systemOverride: null,
@@ -58,6 +61,16 @@ type Conv = {
   workspace_id: string | null;
   organization_id: string | null;
 };
+
+const LIVE_REQUIRED_PATTERNS = [
+  /\b(today|tonight|right now|currently|latest|breaking|news|what(?:'s| is) happening)\b/i,
+  /\b(price|trading at|stock|stocks|bitcoin|btc|crypto|weather|forecast|score|scores|standings|who won)\b/i,
+  /\b(nba|nfl|nhl|mlb|epl|premier league|game|match)\b.*\b(latest|today|tonight|score|won|result)\b/i,
+];
+
+function isLiveRequiredQuery(text: string): boolean {
+  return LIVE_REQUIRED_PATTERNS.some((re) => re.test(text));
+}
 
 function log(reqId: string, stage: Stage, status: "ok" | "warn" | "error", info: Record<string, unknown> = {}) {
   const payload = { reqId, stage, status, ...info };
@@ -115,11 +128,11 @@ async function fetchConversation(sb: SupabaseClient<Database>, convId: string): 
   }
 }
 
-async function cachedWebSearch(query: string): Promise<WebSearchResult | null> {
+async function cachedWebSearch(query: string, timeoutMs = LIVE_REQUIRED_PROVIDER_TIMEOUT_MS): Promise<WebSearchResult | null> {
   const key = query.trim().toLowerCase().slice(0, 300);
   const hit = liveDataCache.get(key) as WebSearchResult | undefined;
   if (hit !== undefined) return hit;
-  const result = await webSearch(query);
+  const result = await webSearch(query, timeoutMs);
   if (result) liveDataCache.set(key, result);
   return result;
 }
@@ -178,12 +191,14 @@ export const Route = createFileRoute("/api/chat")({
           const lastUser = [...parsed.messages].reverse().find((m) => m.role === "user");
           const lastUserText = lastUser?.content ?? "";
           const decision = routeMessage(lastUserText);
+          const liveRequired = decision.needsLiveData && isLiveRequiredQuery(lastUserText);
           const needsLiveData = decision.needsLiveData || aiControl.forceLiveData;
           const needsMemory = decision.needsMemory || aiControl.forceMemory;
           log(reqId, "router", "ok", {
             ...decision,
             needsLiveData,
             needsMemory,
+            liveRequired,
             adminControl: {
               modelOverride: Boolean(aiControl.modelOverride),
               systemOverride: Boolean(aiControl.systemOverride),
@@ -206,27 +221,34 @@ export const Route = createFileRoute("/api/chat")({
             safe(() => recallAdaptiveProfile(userId), null, "adaptive_profile"),
           ]);
 
-          const liveAllowedByProfile = !adaptiveProfile || adaptiveProfile.liveDataEffectiveness >= 0.18 || aiControl.forceLiveData;
-          const shouldAttemptLive = needsLiveData && liveAllowedByProfile && (routingPref.preferLive !== false || aiControl.forceLiveData);
+          const liveAllowedByProfile = liveRequired || !adaptiveProfile || adaptiveProfile.liveDataEffectiveness >= 0.18 || aiControl.forceLiveData;
+          const shouldAttemptLive = needsLiveData && liveAllowedByProfile && (liveRequired || routingPref.preferLive !== false || aiControl.forceLiveData);
+          const liveGateMs = liveRequired ? LIVE_REQUIRED_GATE_MS : LIVE_OPTIONAL_GATE_MS;
+          const liveProviderTimeoutMs = liveRequired ? LIVE_REQUIRED_PROVIDER_TIMEOUT_MS : LIVE_OPTIONAL_PROVIDER_TIMEOUT_MS;
           const livePromise: Promise<WebSearchResult | null> = shouldAttemptLive
-            ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
+            ? safe(() => cachedWebSearch(lastUserText, liveProviderTimeoutMs), null as WebSearchResult | null, "live")
             : Promise.resolve<WebSearchResult | null>(null);
           const liveEarly = shouldAttemptLive
             ? await Promise.race<WebSearchResult | null>([
                 livePromise,
-                new Promise<null>((r) => setTimeout(() => r(null), LIVE_GATE_MS)),
+                new Promise<null>((r) => setTimeout(() => r(null), liveGateMs)),
               ])
             : null;
-          const live = routingPref.preferLive === false && !aiControl.forceLiveData ? null : liveEarly;
-          const liveDeferred = shouldAttemptLive && !liveEarly;
+          const live = routingPref.preferLive === false && !liveRequired && !aiControl.forceLiveData ? null : liveEarly;
+          const liveDeferred = shouldAttemptLive && !liveEarly && !liveRequired;
 
           log(reqId, "router", "ok", { adaptive: { preferLive: routingPref.preferLive, samples: routingPref.sampleSize } });
           log(reqId, "memory", "ok", { hits: memories.length });
           log(reqId, "live", live ? "ok" : "warn", {
             triggered: needsLiveData,
+            required: liveRequired,
+            attempted: shouldAttemptLive,
             allowedByProfile: liveAllowedByProfile,
+            gateMs: liveGateMs,
+            providerTimeoutMs: liveProviderTimeoutMs,
             provider: live?.provider ?? null,
             sources: live?.sources.length ?? 0,
+            injected: Boolean(live),
             deferred: liveDeferred,
             ms: Date.now() - tParallel,
           });
@@ -271,7 +293,7 @@ export const Route = createFileRoute("/api/chat")({
           }
 
           const contextBlocks: string[] = [
-            aiControl.systemOverride || "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Use available memory only when relevant. Cite live-data sources when provided. Adapt answer length and style to the user's learned preferences. Provide only the final answer.",
+            aiControl.systemOverride || "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Use available memory only when relevant. Cite live-data sources when provided. If live web context is provided, treat it as current data and do not claim you lack live access. Adapt answer length and style to the user's learned preferences. Provide only the final answer.",
           ];
           if (adaptiveProfile) contextBlocks.push(formatAdaptiveProfileForPrompt(adaptiveProfile));
           const memBlock = formatMemoriesForPrompt(memories);
@@ -279,6 +301,10 @@ export const Route = createFileRoute("/api/chat")({
           if (live) {
             const srcs = live.sources.length ? `\nSources: ${live.sources.join(", ")}` : "";
             contextBlocks.push(`Live web context for the user's latest question (use it to ground your answer; cite the sources):\n${live.summary}${srcs}`);
+          } else if (liveRequired) {
+            contextBlocks.push(
+              "Live web context was required and the live-data system was attempted before this model call, but no usable Tavily or SerpAPI result returned within the bounded latency budget. Do not claim the product has no live-data system; say the live lookup did not return usable results and ask the user to retry if current data is essential.",
+            );
           }
           const systemPrompt = { role: "system" as const, content: contextBlocks.join("\n\n") };
 
@@ -308,6 +334,9 @@ export const Route = createFileRoute("/api/chat")({
               status: upstream.status,
               ms: Date.now() - llmStart,
               intent: decision.intent,
+              liveRequired,
+              liveAttempted: shouldAttemptLive,
+              liveInjected: Boolean(live),
               liveUsed: !!live,
               memUsed: memories.length,
             });
@@ -353,6 +382,7 @@ export const Route = createFileRoute("/api/chat")({
                   status: live ? "done" : liveDeferred ? "start" : "skipped",
                   sources: live?.sources ?? [],
                   provider: live?.provider ?? null,
+                  required: liveRequired,
                 });
                 if (live?.sources.length) send(controller, { type: "sources", sources: live.sources, provider: live.provider });
               }
@@ -363,11 +393,11 @@ export const Route = createFileRoute("/api/chat")({
               if (liveDeferred) {
                 void livePromise.then((late) => {
                   if (!late?.sources.length) {
-                    send(controller, { type: "tool", name: "web_search", status: "skipped" });
+                    send(controller, { type: "tool", name: "web_search", status: "skipped", required: liveRequired });
                     return;
                   }
                   progressiveSources = late.sources;
-                  send(controller, { type: "tool", name: "web_search", status: "done", sources: late.sources, provider: late.provider });
+                  send(controller, { type: "tool", name: "web_search", status: "done", sources: late.sources, provider: late.provider, required: liveRequired });
                   send(controller, { type: "sources", sources: late.sources, provider: late.provider });
                 }).catch(() => {});
               }
@@ -399,6 +429,7 @@ export const Route = createFileRoute("/api/chat")({
                           ttftMs: firstTokenAt - t0,
                           model,
                           intent: decision.intent,
+                          liveRequired,
                           usedLive: !!live,
                           memoryCount: memories.length,
                         });
@@ -476,6 +507,7 @@ export const Route = createFileRoute("/api/chat")({
                   messageId: assistantMessageId,
                   memoryIds,
                   intent: decision.intent,
+                  liveRequired,
                   liveUsed: !!live || progressiveSources.length > 0,
                   sources: live?.sources ?? progressiveSources,
                   ttfbMs: firstTokenAt ? firstTokenAt - t0 : null,
@@ -486,6 +518,7 @@ export const Route = createFileRoute("/api/chat")({
                   ttftMs: firstTokenAt ? firstTokenAt - t0 : null,
                   totalMs,
                   model,
+                  liveRequired,
                   usedLive: !!live || progressiveSources.length > 0,
                   memoryCount: memories.length,
                   fallbackUsed: !success,
