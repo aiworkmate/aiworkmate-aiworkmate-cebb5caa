@@ -1,9 +1,9 @@
 name: Import aiworkmategpt
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
           repository: aiworkmate/aiworkmategpt
           ref: main
           path: _source/aiworkmategpt
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.IMPORT_PAT }}
 
       - name: Import package and update root metadata
         shell: bash
