@@ -1,0 +1,50 @@
+name: Import AI WorkMate
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out destination
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Clone source
+        run: git clone --depth=1 https://github.com/aiworkmate/AI-WorkMate.git /tmp/AI-WorkMate
+
+      - name: Replace destination contents
+        shell: bash
+        run: |
+          shopt -s dotglob nullglob
+          for item in * .[^.]* ..?*; do
+            [ "$item" = ".git" ] && continue
+            rm -rf "$item"
+          done
+          for item in /tmp/AI-WorkMate/* /tmp/AI-WorkMate/.[!.]* /tmp/AI-WorkMate/..?*; do
+            base="$(basename "$item")"
+            [ "$base" = ".git" ] && continue
+            cp -a "$item" .
+          done
+
+      - name: Commit imported contents
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Destination already matches source."
+            exit 0
+          fi
+          git commit -m "Import AI WorkMate contents from source"
+          git push
