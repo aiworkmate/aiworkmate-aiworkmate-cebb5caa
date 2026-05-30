@@ -1,11 +1,10 @@
-// Long-term adaptive memory - the AI brain.
-// Stores user preferences, habits, recurring topics. Self-improves via usage signals:
-//   - frequency (auto-incremented when recalled)
-//   - usefulness (boosted on reuse, decayed on staleness)
-//   - last_used_at (drives recency ranking)
-// All ops are best-effort; failures return safe defaults so the chat pipeline never breaks.
+// Long-term adaptive memory engine.
+// Uses the existing `memories` table and strengthens behavior through category-aware
+// extraction, ranking, reinforcement, and cleanup. All operations are best-effort.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+export type MemoryCategory = "identity" | "preference" | "project" | "knowledge" | "interaction" | "general";
 
 export interface MemoryEntry {
   id: string;
@@ -17,16 +16,30 @@ export interface MemoryEntry {
   usefulness?: number;
 }
 
-// Daily decay multiplier - usefulness slowly fades when memories aren't reused.
-// Applied per recall against `last_used_at`, so it self-corrects without a cron job.
+export interface MemoryCandidate {
+  content: string;
+  category: MemoryCategory;
+  confidence: number;
+  usefulness: number;
+}
+
 const DAILY_DECAY = 0.995;
+const CATEGORY_WEIGHT: Record<string, number> = {
+  identity: 0.16,
+  project: 0.14,
+  preference: 0.12,
+  knowledge: 0.08,
+  interaction: 0.06,
+  general: 0,
+};
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 const STOP_WORDS = new Set([
   "about", "after", "again", "also", "because", "before", "being", "could", "from",
   "have", "into", "just", "like", "more", "need", "only", "over", "please", "should",
   "that", "their", "there", "these", "this", "with", "what", "when", "where", "which",
-  "while", "would", "your", "you", "the", "and", "for", "are", "but", "not",
+  "while", "would", "your", "you", "the", "and", "for", "are", "but", "not", "can",
+  "will", "make", "want", "need", "using", "than", "then", "them", "they", "our",
 ]);
 
 function terms(text: string): Set<string> {
@@ -40,6 +53,10 @@ function terms(text: string): Set<string> {
   );
 }
 
+function normalizeContent(content: string): string {
+  return content.replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
 function relevanceScore(memory: MemoryEntry, queryTerms: Set<string>): number {
   if (queryTerms.size === 0) return 0;
   const memoryTerms = terms(`${memory.category} ${memory.content}`);
@@ -48,14 +65,94 @@ function relevanceScore(memory: MemoryEntry, queryTerms: Set<string>): number {
   return hits / Math.max(1, queryTerms.size);
 }
 
+function addCandidate(
+  candidates: MemoryCandidate[],
+  content: string | null | undefined,
+  category: MemoryCategory,
+  confidence: number,
+  usefulness: number,
+) {
+  const normalized = normalizeContent(content ?? "");
+  if (normalized.length < 8 || normalized.length > 500) return;
+  if (candidates.some((c) => c.content.toLowerCase() === normalized.toLowerCase())) return;
+  candidates.push({ content: normalized, category, confidence: clamp01(confidence), usefulness: clamp01(usefulness) });
+}
+
+function sentenceMatches(text: string, patterns: RegExp[], max = 3): string[] {
+  const sentences = text
+    .replace(/\n+/g, " ")
+    .split(/(?<=[.!?])\s+|;\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const matches: string[] = [];
+  for (const sentence of sentences) {
+    if (matches.length >= max) break;
+    if (sentence.length > 260) continue;
+    if (patterns.some((re) => re.test(sentence))) matches.push(sentence);
+  }
+  return matches;
+}
+
+export function extractMemoryCandidates(userText: string, assistantText = ""): MemoryCandidate[] {
+  const text = normalizeContent(userText);
+  const combined = `${text}\n${normalizeContent(assistantText)}`;
+  const candidates: MemoryCandidate[] = [];
+
+  for (const sentence of sentenceMatches(text, [
+    /\b(call me|my name is|my preferred name is)\b/i,
+    /\b(i work as|i am a|i'm a|my role is|my company is)\b/i,
+  ])) {
+    addCandidate(candidates, sentence, "identity", 0.9, 0.82);
+  }
+
+  for (const sentence of sentenceMatches(text, [
+    /\b(i prefer|i like|i love|i hate|i usually|i always|i never)\b/i,
+    /\b(prefer .*format|keep .*short|be concise|give me steps|use bullets|use markdown)\b/i,
+    /\b(favorite tool|preferred workflow|workflow preference)\b/i,
+  ], 4)) {
+    addCandidate(candidates, sentence, "preference", 0.84, 0.78);
+  }
+
+  const knownProjects = ["AI WorkMate", "BIM Explorer"];
+  for (const project of knownProjects) {
+    if (new RegExp(`\\b${project.replace(/ /g, "\\s+")}\\b`, "i").test(combined)) {
+      addCandidate(candidates, `Project memory: ${project} is an important ongoing initiative.`, "project", 0.78, 0.76);
+    }
+  }
+  for (const sentence of sentenceMatches(text, [
+    /\b(project|app|platform|startup|business|venture|initiative|long-term goal)\b/i,
+    /\b(i am building|i'm building|we are building|working on|roadmap|phase)\b/i,
+  ], 4)) {
+    if (/\b(project|app|platform|startup|business|venture|initiative|goal|building|roadmap|phase)\b/i.test(sentence)) {
+      addCandidate(candidates, sentence, "project", 0.76, 0.72);
+    }
+  }
+
+  for (const sentence of sentenceMatches(text, [
+    /\b(remember that|important context|key fact|keep in mind)\b/i,
+    /\b(works best when|does not work when|the rule is|constraint is)\b/i,
+  ], 3)) {
+    addCandidate(candidates, sentence, "knowledge", 0.74, 0.68);
+  }
+
+  for (const sentence of sentenceMatches(text, [
+    /\b(i often ask|i usually ask|we often|common request|repeat this workflow|next time)\b/i,
+  ], 2)) {
+    addCandidate(candidates, sentence, "interaction", 0.68, 0.62);
+  }
+
+  return candidates.slice(0, 8);
+}
+
 /** Recall top memories by composite score, then bump frequency/last_used and decay usefulness. */
 export async function recallMemories(userId: string, limit = 8, query = ""): Promise<MemoryEntry[]> {
   try {
-    const candidateLimit = Math.min(Math.max(limit * 4, 16), 40);
+    const candidateLimit = Math.min(Math.max(limit * 6, 24), 60);
     const { data, error } = await supabaseAdmin
       .from("memories")
       .select("id, content, category, pinned, confidence, frequency, usefulness, last_used_at, updated_at")
       .eq("user_id", userId)
+      .neq("category", "archived")
       .order("pinned", { ascending: false })
       .order("usefulness", { ascending: false })
       .order("frequency", { ascending: false })
@@ -70,22 +167,47 @@ export async function recallMemories(userId: string, limit = 8, query = ""): Pro
         const lastUsed = e.last_used_at ? new Date(e.last_used_at).getTime() : now;
         const daysIdle = Math.max(0, (now - lastUsed) / 86_400_000);
         const usefulness = clamp01((e.usefulness ?? 0.5) * Math.pow(DAILY_DECAY, daysIdle));
+        const confidence = clamp01(e.confidence ?? 0.7);
         const recency = clamp01(1 / (1 + daysIdle / 14));
-        const frequency = Math.min(1, Math.log1p(e.frequency ?? 0) / Math.log(20));
+        const frequency = Math.min(1, Math.log1p(e.frequency ?? 0) / Math.log(25));
         const relevance = relevanceScore(e, queryTerms);
-        const score = (e.pinned ? 0.35 : 0) + usefulness * 0.3 + relevance * 0.25 + frequency * 0.06 + recency * 0.04;
+        const category = CATEGORY_WEIGHT[e.category] ?? 0;
+        const score =
+          (e.pinned ? 0.35 : 0) +
+          usefulness * 0.26 +
+          confidence * 0.14 +
+          relevance * 0.27 +
+          frequency * 0.06 +
+          recency * 0.05 +
+          category;
         return { entry: e, usefulness, score, relevance };
       })
-      .filter((r) => r.entry.pinned || queryTerms.size === 0 || r.relevance > 0 || (r.entry.usefulness ?? 0) >= 0.75)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .filter((r) =>
+        r.entry.pinned ||
+        queryTerms.size === 0 ||
+        r.relevance > 0 ||
+        ["identity", "project", "preference"].includes(r.entry.category) ||
+        (r.entry.usefulness ?? 0) >= 0.78,
+      )
+      .sort((a, b) => b.score - a.score);
 
-    // Fire-and-forget: bump usage signal + apply daily decay on the recalled rows.
-    if (ranked.length) {
+    const selected: typeof ranked = [];
+    const perCategory = new Map<string, number>();
+    for (const row of ranked) {
+      if (selected.length >= limit) break;
+      const category = row.entry.category || "general";
+      const count = perCategory.get(category) ?? 0;
+      const cap = row.entry.pinned ? limit : category === "identity" || category === "project" ? 3 : 4;
+      if (count >= cap && row.relevance < 0.2) continue;
+      selected.push(row);
+      perCategory.set(category, count + 1);
+    }
+
+    if (selected.length) {
       void (async () => {
         try {
           await Promise.all(
-            ranked.map(({ entry, usefulness }) =>
+            selected.map(({ entry, usefulness }) =>
               supabaseAdmin
                 .from("memories")
                 .update({
@@ -99,12 +221,11 @@ export async function recallMemories(userId: string, limit = 8, query = ""): Pro
         } catch { /* swallow */ }
       })();
     }
-    return ranked.map((r) => ({ ...r.entry, usefulness: r.usefulness }));
+    return selected.map((r) => ({ ...r.entry, usefulness: r.usefulness }));
   } catch {
     return [];
   }
 }
-
 
 const MEMORY_KEYWORDS = [
   "i prefer", "i like", "i love", "i hate", "i want",
@@ -124,31 +245,32 @@ export async function storeMemory(
   content: string,
   category: string = "general",
   confidence: number = 0.7,
+  usefulness: number = 0.65,
 ): Promise<void> {
-  const trimmed = content.trim().slice(0, 500);
+  const trimmed = normalizeContent(content);
   if (!trimmed) return;
-  if (!shouldStoreMemory(trimmed)) return;
+  if (category === "general" && !shouldStoreMemory(trimmed)) return;
   try {
-    // Dedupe: if a near-identical memory already exists, just bump it instead of inserting.
     const { data: existing } = await supabaseAdmin
       .from("memories")
-      .select("id, frequency, usefulness")
+      .select("id, frequency, usefulness, confidence, category")
       .eq("user_id", userId)
       .ilike("content", trimmed)
       .limit(1)
       .maybeSingle();
 
     if (existing) {
+      const row = existing as { id: string; frequency?: number; usefulness?: number; confidence?: number; category?: string };
       await supabaseAdmin
         .from("memories")
         .update({
-          frequency: ((existing as { frequency?: number }).frequency ?? 1) + 1,
-          usefulness: clamp01(((existing as { usefulness?: number }).usefulness ?? 0.5) + 0.05),
-
+          frequency: (row.frequency ?? 1) + 1,
+          usefulness: clamp01(Math.max(row.usefulness ?? 0.5, usefulness) + 0.04),
+          confidence: clamp01(Math.max(row.confidence ?? 0.5, confidence)),
+          category: row.category === "general" ? category : row.category,
           last_used_at: new Date().toISOString(),
-          confidence: Math.max(confidence, 0.7),
         })
-        .eq("id", (existing as { id: string }).id);
+        .eq("id", row.id);
       return;
     }
 
@@ -156,12 +278,22 @@ export async function storeMemory(
       user_id: userId,
       content: trimmed,
       category,
-      confidence,
+      confidence: clamp01(confidence),
+      usefulness: clamp01(usefulness),
       pinned: false,
     });
   } catch {
     /* swallow */
   }
+}
+
+export async function persistMemoryCandidates(userId: string, candidates: MemoryCandidate[]): Promise<void> {
+  if (!candidates.length) return;
+  await Promise.all(
+    candidates.map((candidate) =>
+      storeMemory(userId, candidate.content, candidate.category, candidate.confidence, candidate.usefulness),
+    ),
+  );
 }
 
 /** Boost usefulness for memories that were actually surfaced AND followed by a non-fallback reply. */
@@ -179,16 +311,58 @@ export async function reinforceMemories(memoryIds: string[]): Promise<void> {
           .from("memories")
           .update({ usefulness: clamp01((m.usefulness ?? 0.5) + 0.03) })
           .eq("id", m.id),
-
       ),
+    );
+  } catch { /* swallow */ }
+}
+
+export async function recordMemoryUseOutcome(memoryIds: string[], params: { success: boolean; wasFallback: boolean; responseChars: number }) {
+  if (!memoryIds.length) return;
+  try {
+    const { data } = await supabaseAdmin
+      .from("memories")
+      .select("id, category, confidence, frequency, usefulness")
+      .in("id", memoryIds);
+    if (!data) return;
+    await Promise.all(
+      (data as { id: string; category: string; confidence: number; frequency: number; usefulness: number }[]).map((m) => {
+        const boost = params.success && !params.wasFallback && params.responseChars > 120 ? 0.025 : -0.06;
+        const usefulness = clamp01((m.usefulness ?? 0.5) + boost);
+        const archive = usefulness < 0.08 && (m.frequency ?? 0) > 5 && !["identity", "project"].includes(m.category);
+        return supabaseAdmin
+          .from("memories")
+          .update({
+            usefulness,
+            confidence: archive ? Math.max(0.1, (m.confidence ?? 0.5) - 0.1) : m.confidence,
+            category: archive ? "archived" : m.category,
+          })
+          .eq("id", m.id);
+      }),
     );
   } catch { /* swallow */ }
 }
 
 export function formatMemoriesForPrompt(entries: MemoryEntry[]): string {
   if (entries.length === 0) return "";
-  const lines = entries.map((e) => `- (${e.category}${e.pinned ? ", pinned" : ""}) ${e.content}`);
-  return `Known user context (use only if relevant, do not mention unless asked):\n${lines.join("\n")}`;
+  const labels: Record<string, string> = {
+    identity: "Identity memory",
+    preference: "Preference memory",
+    project: "Project memory",
+    knowledge: "Knowledge memory",
+    interaction: "Interaction memory",
+    general: "General memory",
+  };
+  const grouped = new Map<string, MemoryEntry[]>();
+  for (const entry of entries) {
+    const category = labels[entry.category] ? entry.category : "general";
+    grouped.set(category, [...(grouped.get(category) ?? []), entry]);
+  }
+  const sections: string[] = [];
+  for (const [category, rows] of grouped) {
+    const lines = rows.map((e) => `- ${e.content}`);
+    sections.push(`${labels[category] ?? labels.general}:\n${lines.join("\n")}`);
+  }
+  return `Known user context. Use only when relevant and do not mention memory unless asked.\n${sections.join("\n\n")}`;
 }
 
 const PREF_PATTERNS = [

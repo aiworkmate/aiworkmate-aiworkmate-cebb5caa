@@ -12,13 +12,18 @@ import {
   storeMemory,
   formatMemoriesForPrompt,
   extractPreference,
-  reinforceMemories,
+  extractMemoryCandidates,
+  persistMemoryCandidates,
+  recordMemoryUseOutcome,
   type MemoryEntry,
 } from "@/lib/chat/memory.server";
 import {
   recallRoutingPreference,
   recordRoutingOutcome,
   logResponseOutcome,
+  recallAdaptiveProfile,
+  formatAdaptiveProfileForPrompt,
+  recordAdaptiveLearning,
 } from "@/lib/chat/adaptive.server";
 import { liveDataCache } from "@/lib/chat/cache.server";
 import { safe, metrics } from "@/lib/chat/safe.server";
@@ -188,11 +193,7 @@ export const Route = createFileRoute("/api/chat")({
           });
 
           const tParallel = Date.now();
-          const livePromise: Promise<WebSearchResult | null> = needsLiveData
-            ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
-            : Promise.resolve<WebSearchResult | null>(null);
-
-          const [conv, memories, routingPref] = await Promise.all([
+          const [conv, memories, routingPref, adaptiveProfile] = await Promise.all([
             safe(() => fetchConversation(sb, parsed.conversationId), null, "conv"),
             needsMemory
               ? safe(() => recallMemories(userId, 8, lastUserText), [] as MemoryEntry[], "memory")
@@ -202,9 +203,14 @@ export const Route = createFileRoute("/api/chat")({
               { preferLive: null, avgLatency: 0, sampleSize: 0 },
               "routing_pref",
             ),
+            safe(() => recallAdaptiveProfile(userId), null, "adaptive_profile"),
           ]);
 
-          const shouldAttemptLive = needsLiveData && (routingPref.preferLive !== false || aiControl.forceLiveData);
+          const liveAllowedByProfile = !adaptiveProfile || adaptiveProfile.liveDataEffectiveness >= 0.18 || aiControl.forceLiveData;
+          const shouldAttemptLive = needsLiveData && liveAllowedByProfile && (routingPref.preferLive !== false || aiControl.forceLiveData);
+          const livePromise: Promise<WebSearchResult | null> = shouldAttemptLive
+            ? safe(() => cachedWebSearch(lastUserText), null as WebSearchResult | null, "live")
+            : Promise.resolve<WebSearchResult | null>(null);
           const liveEarly = shouldAttemptLive
             ? await Promise.race<WebSearchResult | null>([
                 livePromise,
@@ -218,12 +224,13 @@ export const Route = createFileRoute("/api/chat")({
           log(reqId, "memory", "ok", { hits: memories.length });
           log(reqId, "live", live ? "ok" : "warn", {
             triggered: needsLiveData,
+            allowedByProfile: liveAllowedByProfile,
             provider: live?.provider ?? null,
             sources: live?.sources.length ?? 0,
             deferred: liveDeferred,
             ms: Date.now() - tParallel,
           });
-          log(reqId, "tools", "ok", { invoked: 0 });
+          log(reqId, "tools", "ok", { invoked: shouldAttemptLive ? 1 : 0 });
 
           if (!conv || conv.user_id !== userId) {
             log(reqId, "router", "warn", { reason: !conv ? "not_found" : "forbidden" });
@@ -259,11 +266,14 @@ export const Route = createFileRoute("/api/chat")({
             })();
             const pref = extractPreference(userContent);
             if (pref) void storeMemory(userId, pref, "preference", 0.85).catch(() => {});
+            const candidates = extractMemoryCandidates(userContent);
+            if (candidates.length) void persistMemoryCandidates(userId, candidates).catch(() => {});
           }
 
           const contextBlocks: string[] = [
-            aiControl.systemOverride || "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Use available memory only when relevant. Cite live-data sources when provided. Provide only the final answer.",
+            aiControl.systemOverride || "You are AI WorkMate, a secure enterprise AI assistant. Be precise, structured, and professional. Use markdown. Never reveal chain-of-thought or internal tooling. Use available memory only when relevant. Cite live-data sources when provided. Adapt answer length and style to the user's learned preferences. Provide only the final answer.",
           ];
+          if (adaptiveProfile) contextBlocks.push(formatAdaptiveProfileForPrompt(adaptiveProfile));
           const memBlock = formatMemoriesForPrompt(memories);
           if (memBlock) contextBlocks.push(memBlock);
           if (live) {
@@ -429,6 +439,7 @@ export const Route = createFileRoute("/api/chat")({
 
                 const totalMs = Date.now() - t0;
                 const success = assembled.trim().length > 0;
+                const toolNames = shouldAttemptLive ? ["web_search"] : [];
                 void recordRoutingOutcome({ userId, intent: decision.intent, liveUsed: !!live, success, latencyMs: totalMs }).catch(() => {});
                 void logResponseOutcome({
                   userId,
@@ -440,7 +451,26 @@ export const Route = createFileRoute("/api/chat")({
                   chars: assembled.length,
                   wasFallback: !success,
                 }).catch(() => {});
-                if (success && memories.length) void reinforceMemories(memoryIds).catch(() => {});
+                void recordMemoryUseOutcome(memoryIds, {
+                  success,
+                  wasFallback: !success,
+                  responseChars: assembled.length,
+                }).catch(() => {});
+                void recordAdaptiveLearning({
+                  userId,
+                  userText: lastUserText,
+                  assistantText: assembled,
+                  intent: decision.intent,
+                  liveUsed: !!live || progressiveSources.length > 0,
+                  memoryHits: memories.length,
+                  toolNames,
+                  latencyMs: totalMs,
+                  wasFallback: !success,
+                }).catch(() => {});
+                if (success) {
+                  const candidates = extractMemoryCandidates(lastUserText, assembled);
+                  if (candidates.length) void persistMemoryCandidates(userId, candidates).catch(() => {});
+                }
                 send(controller, {
                   type: "done",
                   messageId: assistantMessageId,
