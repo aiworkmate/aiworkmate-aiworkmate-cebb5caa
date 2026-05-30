@@ -19,6 +19,7 @@ import { Route as AppUploadsRouteImport } from './routes/app/uploads'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppMemoryRouteImport } from './routes/app/memory'
 import { Route as AppMedicalRouteImport } from './routes/app/medical'
+import { Route as AppContextRouteImport } from './routes/app/context'
 import { Route as AppChatRouteImport } from './routes/app/chat'
 import { Route as AppAuditRouteImport } from './routes/app/audit'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
@@ -76,6 +77,11 @@ const AppMedicalRoute = AppMedicalRouteImport.update({
   path: '/medical',
   getParentRoute: () => AppRoute,
 } as any)
+const AppContextRoute = AppContextRouteImport.update({
+  id: '/context',
+  path: '/context',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppChatRoute = AppChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/audit': typeof AppAuditRoute
   '/app/chat': typeof AppChatRoute
+  '/app/context': typeof AppContextRoute
   '/app/medical': typeof AppMedicalRoute
   '/app/memory': typeof AppMemoryRoute
   '/app/settings': typeof AppSettingsRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/audit': typeof AppAuditRoute
   '/app/chat': typeof AppChatRoute
+  '/app/context': typeof AppContextRoute
   '/app/medical': typeof AppMedicalRoute
   '/app/memory': typeof AppMemoryRoute
   '/app/settings': typeof AppSettingsRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/audit': typeof AppAuditRoute
   '/app/chat': typeof AppChatRoute
+  '/app/context': typeof AppContextRoute
   '/app/medical': typeof AppMedicalRoute
   '/app/memory': typeof AppMemoryRoute
   '/app/settings': typeof AppSettingsRoute
@@ -173,6 +182,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/audit'
     | '/app/chat'
+    | '/app/context'
     | '/app/medical'
     | '/app/memory'
     | '/app/settings'
@@ -190,6 +200,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/audit'
     | '/app/chat'
+    | '/app/context'
     | '/app/medical'
     | '/app/memory'
     | '/app/settings'
@@ -208,6 +219,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/audit'
     | '/app/chat'
+    | '/app/context'
     | '/app/medical'
     | '/app/memory'
     | '/app/settings'
@@ -297,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMedicalRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/context': {
+      id: '/app/context'
+      path: '/context'
+      fullPath: '/app/context'
+      preLoaderRoute: typeof AppContextRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/chat': {
       id: '/app/chat'
       path: '/chat'
@@ -359,6 +378,7 @@ interface AppRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAuditRoute: typeof AppAuditRoute
   AppChatRoute: typeof AppChatRoute
+  AppContextRoute: typeof AppContextRoute
   AppMedicalRoute: typeof AppMedicalRoute
   AppMemoryRoute: typeof AppMemoryRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -372,6 +392,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAuditRoute: AppAuditRoute,
   AppChatRoute: AppChatRoute,
+  AppContextRoute: AppContextRoute,
   AppMedicalRoute: AppMedicalRoute,
   AppMemoryRoute: AppMemoryRoute,
   AppSettingsRoute: AppSettingsRoute,
@@ -392,3 +413,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

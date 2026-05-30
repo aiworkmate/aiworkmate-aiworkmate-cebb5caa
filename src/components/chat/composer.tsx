@@ -84,10 +84,10 @@ export function Composer({ disabled, isStreaming, onSend }: ComposerProps) {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 p-2">
+      <div className="flex items-end gap-2 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground md:h-9 md:w-9"
           aria-label="Attach files"
           type="button"
         >
@@ -107,12 +107,12 @@ export function Composer({ disabled, isStreaming, onSend }: ComposerProps) {
           rows={1}
           placeholder={dragOver ? "Drop files to attach…" : "Message AI WorkMate…"}
           disabled={disabled}
-          className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
+          className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2 text-base outline-none placeholder:text-muted-foreground/70 disabled:opacity-50 md:text-sm"
         />
         <button
           onClick={handleSubmit}
           disabled={!canSend}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-gradient-primary text-primary-foreground shadow-glow transition disabled:opacity-40"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-gradient-primary text-primary-foreground shadow-glow transition disabled:opacity-40 md:h-9 md:w-9"
           aria-label="Send message"
         >
           {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
