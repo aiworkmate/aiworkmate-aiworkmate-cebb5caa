@@ -314,6 +314,36 @@ export const Route = createFileRoute("/api/chat")({
           }
           const systemPrompt = { role: "system" as const, content: contextBlocks.join("\n\n") };
 
+          // Context Intelligence: bound the payload before the model call.
+          // Original messages remain untouched in the DB; this only trims the
+          // model-facing slice using the rolling conversation summary + last N turns.
+          const assembled_ctx = await safe(
+            () => assembleBoundedMessages(parsed.messages, conv.id),
+            {
+              messages: parsed.messages,
+              trimmed: false,
+              originalCount: parsed.messages.length,
+              originalChars: parsed.messages.reduce((n, m) => n + m.content.length, 0),
+              finalChars: parsed.messages.reduce((n, m) => n + m.content.length, 0),
+              summaryInjected: false,
+              summaryText: null,
+            },
+            "context_assembly",
+          );
+          log(reqId, "validate", "ok", {
+            contextAssembly: {
+              originalCount: assembled_ctx.originalCount,
+              originalChars: assembled_ctx.originalChars,
+              finalChars: assembled_ctx.finalChars,
+              trimmed: assembled_ctx.trimmed,
+              summaryInjected: assembled_ctx.summaryInjected,
+              compressionRatio:
+                assembled_ctx.originalChars > 0
+                  ? Math.round((assembled_ctx.finalChars / assembled_ctx.originalChars) * 100) / 100
+                  : 1,
+            },
+          });
+
           let upstream: Response;
           let model = "unknown";
           let attemptedModels: string[] = [];
@@ -324,7 +354,7 @@ export const Route = createFileRoute("/api/chat")({
             try {
               const result = await requestChatCompletion({
                 apiKey,
-                messages: [systemPrompt, ...parsed.messages],
+                messages: [systemPrompt, ...assembled_ctx.messages],
                 signal: controller.signal,
                 preferredModels: aiControl.modelOverride ? [aiControl.modelOverride] : [],
               });
