@@ -1,0 +1,4 @@
+-- Superseded by versioned migrations in supabase/migrations/.
+-- Apply these in order after review:
+-- 1. 202605280001_ai_workmate_core.sql
+-- 2. 202605280002_ai_workmate_rls_storage.sql
