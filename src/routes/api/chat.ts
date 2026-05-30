@@ -30,13 +30,18 @@ import { liveDataCache } from "@/lib/chat/cache.server";
 import { safe, metrics } from "@/lib/chat/safe.server";
 import { requestChatCompletion } from "@/lib/chat/model.server";
 import { getAiControlForUser, type AiControlSettings } from "@/lib/admin/ai-control.server";
+import { assembleBoundedMessages } from "@/lib/chat/context-assembly.server";
+import { maybeSummarizeConversation } from "@/lib/chat/compression.server";
 
+// Per-message cap raised to 200k: the context-assembly layer trims everything
+// down to a safe ~14k total payload before the model is called. This prevents
+// a single large pasted message from failing Zod and short-circuiting chat.
 const Body = z.object({
   conversationId: z.string().uuid(),
   messages: z.array(z.object({
     role: z.enum(["user", "assistant", "system"]),
-    content: z.string().min(1).max(20000),
-  })).min(1).max(50),
+    content: z.string().min(1).max(200000),
+  })).min(1).max(200),
 });
 
 const FRIENDLY_FALLBACK = "Sorry, something went wrong. Please try again.";
