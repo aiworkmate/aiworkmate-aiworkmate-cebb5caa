@@ -3,28 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "AI WorkMate - Unified full-stack AI operating system.",
-  "engines": {
-    "node": ">=20"
-  },
-  "workspaces": [
-    "packages/nexus-ui",
-    "packages/gpt-module",
-    "packages/frontend"
-  ],
+  "description": "AI WorkMate full-stack AI operating system foundation.",
   "scripts": {
-    "dev": "concurrently \"npm run dev -w packages/nexus-ui\" \"npm run dev -w packages/gpt-module\" \"npm run dev -w packages/frontend\"",
-    "build": "npm run build -ws",
-    "build:nexus": "npm run build -w packages/nexus-ui",
-    "build:gpt": "npm run build -w packages/gpt-module",
-    "build:frontend": "npm run build -w packages/frontend",
     "start": "node server/index.mjs",
     "test": "node --test tests/*.test.mjs",
-    "smoke": "node tests/smoke.mjs",
-    "lint": "npm run lint -ws",
-    "format": "npm run format -ws"
+    "smoke": "node tests/smoke.mjs"
   },
-  "devDependencies": {
-    "concurrently": "^9.0.0"
+  "engines": {
+    "node": ">=20"
   }
 }
