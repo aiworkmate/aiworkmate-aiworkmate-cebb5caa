@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   MessageSquare, Brain, FileText, Workflow, BarChart3,
-  Shield, Settings, Stethoscope, LayoutDashboard, Plus, ScrollText,
+  Shield, Settings, Stethoscope, LayoutDashboard, Plus, ScrollText, Layers,
 } from "lucide-react";
 
 const groups = [
@@ -11,6 +11,7 @@ const groups = [
       { to: "/app", label: "Overview", icon: LayoutDashboard, exact: true },
       { to: "/app/chat", label: "Chat", icon: MessageSquare },
       { to: "/app/memory", label: "Memory", icon: Brain },
+      { to: "/app/context", label: "Context", icon: Layers },
       { to: "/app/uploads", label: "Documents", icon: FileText },
       { to: "/app/workflows", label: "Workflows", icon: Workflow },
     ],
