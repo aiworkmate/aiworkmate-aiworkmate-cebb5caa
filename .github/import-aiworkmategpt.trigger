@@ -1,1 +1,1 @@
-trigger import-aiworkmategpt
+trigger corrected import-aiworkmategpt
