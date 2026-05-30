@@ -32,6 +32,7 @@ import { requestChatCompletion } from "@/lib/chat/model.server";
 import { getAiControlForUser, type AiControlSettings } from "@/lib/admin/ai-control.server";
 import { assembleBoundedMessages } from "@/lib/chat/context-assembly.server";
 import { maybeSummarizeConversation } from "@/lib/chat/compression.server";
+import { maybeExtractKnowledge } from "@/lib/chat/knowledge.server";
 
 // Per-message cap raised to 200k: the context-assembly layer trims everything
 // down to a safe ~14k total payload before the model is called. This prevents
@@ -539,6 +540,8 @@ export const Route = createFileRoute("/api/chat")({
                   if (candidates.length) void persistMemoryCandidates(userId, candidates).catch(() => {});
                   // Context Intelligence: fire-and-forget rolling summary refresh.
                   void maybeSummarizeConversation({ conversationId: convId }).catch(() => {});
+                  // Phase 2: structured knowledge extraction (projects, goals, tasks, decisions).
+                  void maybeExtractKnowledge({ userId, conversationId: convId }).catch(() => {});
                 }
                 send(controller, {
                   type: "done",
