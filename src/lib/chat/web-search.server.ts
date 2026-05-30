@@ -1,4 +1,4 @@
-// Live data fetch — enterprise stack with graceful degradation.
+// Live data fetch - enterprise stack with graceful degradation.
 //   1. Tavily (AI-optimized, primary)
 //   2. SerpAPI (Google-grade, fallback)
 // Any failure cascades to the next provider. Never throws.
@@ -10,18 +10,19 @@ export interface WebSearchResult {
   provider: "tavily" | "serpapi";
 }
 
-const DEFAULT_TIMEOUT = 5000;
+const DEFAULT_TIMEOUT = 2500;
 
 async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Promise<any | null> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, { ...init, signal: controller.signal });
-    clearTimeout(t);
     if (!res.ok) return null;
     return await res.json();
   } catch {
     return null;
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -48,7 +49,7 @@ async function tavilySearch(query: string, timeoutMs: number): Promise<WebSearch
   const sources: string[] = [];
   if (data.answer) bits.push(data.answer);
   for (const r of (data.results ?? []).slice(0, 5)) {
-    if (r.title || r.content) bits.push(`• ${r.title ?? ""}${r.content ? ` — ${r.content}` : ""}`);
+    if (r.title || r.content) bits.push(`- ${r.title ?? ""}${r.content ? ` - ${r.content}` : ""}`);
     if (r.url) sources.push(r.url);
   }
   const summary = bits.join("\n").trim();
@@ -68,7 +69,7 @@ async function serpApiSearch(query: string, timeoutMs: number): Promise<WebSearc
   else if (data.answer_box?.snippet) bits.push(data.answer_box.snippet);
   if (data.knowledge_graph?.description) bits.push(data.knowledge_graph.description);
   for (const r of (data.organic_results ?? []).slice(0, 5)) {
-    if (r.title || r.snippet) bits.push(`• ${r.title ?? ""}${r.snippet ? ` — ${r.snippet}` : ""}`);
+    if (r.title || r.snippet) bits.push(`- ${r.title ?? ""}${r.snippet ? ` - ${r.snippet}` : ""}`);
     if (r.link) sources.push(r.link);
   }
   const summary = bits.join("\n").trim();

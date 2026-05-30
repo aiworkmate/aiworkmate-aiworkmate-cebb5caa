@@ -1,4 +1,4 @@
-// Long-term adaptive memory — the AI brain.
+// Long-term adaptive memory - the AI brain.
 // Stores user preferences, habits, recurring topics. Self-improves via usage signals:
 //   - frequency (auto-incremented when recalled)
 //   - usefulness (boosted on reuse, decayed on staleness)
@@ -17,49 +17,89 @@ export interface MemoryEntry {
   usefulness?: number;
 }
 
-// Daily decay multiplier — usefulness slowly fades when memories aren't reused.
+// Daily decay multiplier - usefulness slowly fades when memories aren't reused.
 // Applied per recall against `last_used_at`, so it self-corrects without a cron job.
 const DAILY_DECAY = 0.995;
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
+const STOP_WORDS = new Set([
+  "about", "after", "again", "also", "because", "before", "being", "could", "from",
+  "have", "into", "just", "like", "more", "need", "only", "over", "please", "should",
+  "that", "their", "there", "these", "this", "with", "what", "when", "where", "which",
+  "while", "would", "your", "you", "the", "and", "for", "are", "but", "not",
+]);
+
+function terms(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 3 && !STOP_WORDS.has(t)),
+  );
+}
+
+function relevanceScore(memory: MemoryEntry, queryTerms: Set<string>): number {
+  if (queryTerms.size === 0) return 0;
+  const memoryTerms = terms(`${memory.category} ${memory.content}`);
+  let hits = 0;
+  for (const t of queryTerms) if (memoryTerms.has(t)) hits++;
+  return hits / Math.max(1, queryTerms.size);
+}
+
 /** Recall top memories by composite score, then bump frequency/last_used and decay usefulness. */
-export async function recallMemories(userId: string, limit = 8): Promise<MemoryEntry[]> {
+export async function recallMemories(userId: string, limit = 8, query = ""): Promise<MemoryEntry[]> {
   try {
+    const candidateLimit = Math.min(Math.max(limit * 4, 16), 40);
     const { data, error } = await supabaseAdmin
       .from("memories")
-      .select("id, content, category, pinned, confidence, frequency, usefulness, last_used_at")
+      .select("id, content, category, pinned, confidence, frequency, usefulness, last_used_at, updated_at")
       .eq("user_id", userId)
       .order("pinned", { ascending: false })
       .order("usefulness", { ascending: false })
       .order("frequency", { ascending: false })
       .order("updated_at", { ascending: false })
-      .limit(limit);
+      .limit(candidateLimit);
     if (error || !data) return [];
-    const entries = data as (MemoryEntry & { last_used_at?: string })[];
+    const entries = data as (MemoryEntry & { last_used_at?: string; updated_at?: string })[];
+    const queryTerms = terms(query);
+    const now = Date.now();
+    const ranked = entries
+      .map((e) => {
+        const lastUsed = e.last_used_at ? new Date(e.last_used_at).getTime() : now;
+        const daysIdle = Math.max(0, (now - lastUsed) / 86_400_000);
+        const usefulness = clamp01((e.usefulness ?? 0.5) * Math.pow(DAILY_DECAY, daysIdle));
+        const recency = clamp01(1 / (1 + daysIdle / 14));
+        const frequency = Math.min(1, Math.log1p(e.frequency ?? 0) / Math.log(20));
+        const relevance = relevanceScore(e, queryTerms);
+        const score = (e.pinned ? 0.35 : 0) + usefulness * 0.3 + relevance * 0.25 + frequency * 0.06 + recency * 0.04;
+        return { entry: e, usefulness, score, relevance };
+      })
+      .filter((r) => r.entry.pinned || queryTerms.size === 0 || r.relevance > 0 || (r.entry.usefulness ?? 0) >= 0.75)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
     // Fire-and-forget: bump usage signal + apply daily decay on the recalled rows.
-    if (entries.length) {
-      const now = Date.now();
+    if (ranked.length) {
       void (async () => {
         try {
           await Promise.all(
-            entries.map((e) => {
-              const lastUsed = e.last_used_at ? new Date(e.last_used_at).getTime() : now;
-              const daysIdle = Math.max(0, (now - lastUsed) / 86_400_000);
-              const decayed = clamp01((e.usefulness ?? 0.5) * Math.pow(DAILY_DECAY, daysIdle));
-              return supabaseAdmin
+            ranked.map(({ entry, usefulness }) =>
+              supabaseAdmin
                 .from("memories")
                 .update({
-                  frequency: (e.frequency ?? 1) + 1,
-                  usefulness: decayed,
+                  frequency: (entry.frequency ?? 1) + 1,
+                  usefulness,
                   last_used_at: new Date(now).toISOString(),
                 })
-                .eq("id", e.id);
-            }),
+                .eq("id", entry.id),
+            ),
           );
         } catch { /* swallow */ }
       })();
     }
-    return entries;
+    return ranked.map((r) => ({ ...r.entry, usefulness: r.usefulness }));
   } catch {
     return [];
   }
