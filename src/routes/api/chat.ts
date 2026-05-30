@@ -1,4 +1,5 @@
 // Server route - streams chat completions from Lovable AI Gateway.
+// (rebuild-touch: restore missing preview worker bundle; no behavior change)
 // Stability layers stay on top of the existing architecture: auth, strict routing,
 // memory, live data, streaming, persistence, adaptive learning, and admin controls.
 import { createFileRoute } from "@tanstack/react-router";
