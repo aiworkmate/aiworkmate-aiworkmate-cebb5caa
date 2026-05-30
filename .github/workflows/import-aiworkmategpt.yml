@@ -1,0 +1,68 @@
+name: Import aiworkmategpt
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out destination
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Check out aiworkmategpt
+        uses: actions/checkout@v4
+        with:
+          repository: aiworkmate/aiworkmategpt
+          ref: main
+          path: /tmp/aiworkmategpt
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Import package and update root metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf packages/gpt-module
+          mkdir -p packages/gpt-module
+          shopt -s dotglob nullglob
+          for item in /tmp/aiworkmategpt/* /tmp/aiworkmategpt/.[!.]* /tmp/aiworkmategpt/..?*; do
+            base="$(basename "$item")"
+            [ "$base" = ".git" ] && continue
+            cp -a "$item" packages/gpt-module/
+          done
+          rm -f .github/workflows/import-aiworkmategpt.yml
+          node <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.workspaces = Array.from(new Set([...(pkg.workspaces || []), 'packages/gpt-module']));
+          pkg.scripts = {
+            ...(pkg.scripts || {}),
+            'dev:gpt': 'npm run dev -w packages/gpt-module',
+            'build:gpt': 'npm run build -w packages/gpt-module',
+            'lint:gpt': 'npm run lint -w packages/gpt-module',
+            'format:gpt': 'npm run format -w packages/gpt-module'
+          };
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+      - name: Commit import
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Import aiworkmategpt into packages/gpt-module"
+          git push
