@@ -24,7 +24,7 @@ jobs:
         with:
           repository: aiworkmate/aiworkmategpt
           ref: main
-          path: /tmp/aiworkmategpt
+          path: _source/aiworkmategpt
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Import package and update root metadata
@@ -34,12 +34,13 @@ jobs:
           rm -rf packages/gpt-module
           mkdir -p packages/gpt-module
           shopt -s dotglob nullglob
-          for item in /tmp/aiworkmategpt/* /tmp/aiworkmategpt/.[!.]* /tmp/aiworkmategpt/..?*; do
+          for item in _source/aiworkmategpt/* _source/aiworkmategpt/.[!.]* _source/aiworkmategpt/..?*; do
             base="$(basename "$item")"
             [ "$base" = ".git" ] && continue
             cp -a "$item" packages/gpt-module/
           done
-          rm -f .github/workflows/import-aiworkmategpt.yml
+          rm -rf _source
+          rm -f .github/workflows/import-aiworkmategpt.yml .github/import-aiworkmategpt.trigger
           node <<'NODE'
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
