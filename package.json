@@ -6,6 +6,7 @@
   "description": "AI WorkMate full-stack AI operating system foundation.",
   "scripts": {
     "start": "node server/index.mjs",
+    "dev": "node server/index.mjs",
     "build": "echo \"No build step required - static assets in public/\"",
     "build:dev": "echo \"No dev build step required\"",
     "test": "node --test tests/*.test.mjs",
