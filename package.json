@@ -7,8 +7,8 @@
   "scripts": {
     "start": "node server/index.mjs",
     "dev": "HOST=0.0.0.0 PORT=8080 node server/index.mjs",
-    "build": "echo \"No build step required - static assets in public/\"",
-    "build:dev": "echo \"No dev build step required\"",
+    "build": "rm -rf dist && mkdir -p dist && cp -r public/* dist/ 2>/dev/null || true",
+    "build:dev": "rm -rf dist && mkdir -p dist && cp -r public/* dist/ 2>/dev/null || true",
     "test": "node --test tests/*.test.mjs",
     "smoke": "node tests/smoke.mjs"
   },
