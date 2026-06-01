@@ -1,0 +1,101 @@
+name: Import AI Operating System
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Clone source repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/AI-WorkMate /tmp/aiworkmategpt
+          git clone --depth=1 https://github.com/aiworkmate/AI-WorkMate.git /tmp/AI-WorkMate
+          git clone --depth=1 https://github.com/aiworkmate/aiworkmategpt.git /tmp/aiworkmategpt
+
+      - name: Import AI operating system files
+        shell: bash
+        run: |
+          set -euo pipefail
+          copy_contents() {
+            local src="$1"
+            local dst="$2"
+            mkdir -p "$dst"
+            shopt -s dotglob nullglob
+            for item in "$src"/* "$src"/.[!.]* "$src"/..?*; do
+              local base
+              base="$(basename "$item")"
+              case "$base" in
+                .git|.github|.env|node_modules|dist|build|.turbo|.cache|.output|.vinxi)
+                  continue
+                  ;;
+              esac
+              rm -rf "$dst/$base"
+              cp -a "$item" "$dst/"
+            done
+          }
+
+          copy_contents /tmp/AI-WorkMate .
+          rm -rf packages/gpt-module
+          copy_contents /tmp/aiworkmategpt packages/gpt-module
+
+          rm -f .env packages/gpt-module/.env
+          rm -rf packages/gpt-module/node_modules packages/gpt-module/dist packages/gpt-module/build packages/gpt-module/.output packages/gpt-module/.vinxi
+          rm -f .github/workflows/import-ai-operating-system.yml
+
+      - name: Normalize monorepo package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.name = 'ai-workmate';
+          pkg.version = pkg.version || '1.0.0';
+          pkg.private = true;
+          pkg.type = 'module';
+          pkg.description = 'AI WorkMate full-stack AI operating system with imported GPT module.';
+          pkg.engines = { node: '>=20' };
+          pkg.workspaces = ['packages/gpt-module'];
+          pkg.scripts = {
+            start: 'node server/index.mjs',
+            dev: 'node server/index.mjs',
+            'dev:gpt': 'npm run dev -w packages/gpt-module',
+            build: 'npm run build -w packages/gpt-module',
+            'build:gpt': 'npm run build -w packages/gpt-module',
+            test: 'node --test tests/*.test.mjs',
+            smoke: 'node tests/smoke.mjs',
+            lint: 'npm run lint -w packages/gpt-module',
+            format: 'npm run format -w packages/gpt-module'
+          };
+          delete pkg.devDependencies;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+      - name: Commit imported contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Target already contains the requested AI operating system files."
+            exit 0
+          fi
+          git commit -m "Import AI operating system modules"
+          git push
