@@ -3,16 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "AI WorkMate full-stack AI operating system foundation.",
-  "scripts": {
-    "start": "node server/index.mjs",
-    "dev": "HOST=0.0.0.0 PORT=8080 node server/index.mjs",
-    "build": "rm -rf dist && mkdir -p dist && cp -r public/* dist/ 2>/dev/null || true",
-    "build:dev": "rm -rf dist && mkdir -p dist && cp -r public/* dist/ 2>/dev/null || true",
-    "test": "node --test tests/*.test.mjs",
-    "smoke": "node tests/smoke.mjs"
-  },
+  "description": "AI WorkMate full-stack AI operating system with imported GPT module.",
   "engines": {
     "node": ">=20"
+  },
+  "workspaces": [
+    "packages/gpt-module"
+  ],
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node server/index.mjs",
+    "dev:gpt": "npm run dev -w packages/gpt-module",
+    "build": "npm run build -w packages/gpt-module",
+    "build:gpt": "npm run build -w packages/gpt-module",
+    "test": "node --test tests/*.test.mjs",
+    "smoke": "node tests/smoke.mjs",
+    "lint": "npm run lint -w packages/gpt-module",
+    "format": "npm run format -w packages/gpt-module"
   }
 }

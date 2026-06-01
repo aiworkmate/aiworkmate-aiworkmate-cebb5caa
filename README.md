@@ -1,17 +1,25 @@
-# AI WorkMate
+# AI WorkMate - Unified Monorepo
 
 AI WorkMate is a full-stack AI operating system foundation built for secure chat, live data retrieval, memory, file understanding, medical assistive workflows, and enterprise administration.
 
 ## Repository Structure
 
-```txt
+This is a unified monorepo consolidating four repositories:
+
+```
 AI-WorkMate/
-├── public/                # Browser app assets
-├── server/                # Server implementation
+├── packages/
+│   ├── nexus-ui/          # UI component library (from workmate-nexus-ui)
+│   │                      # TypeScript, 96.7%
+│   ├── gpt-module/        # GPT integration module (from aiworkmategpt)
+│   │                      # TypeScript, 96.3%
+│   └── frontend/          # Frontend application (from ai-workmate-frontend)
+│                          # TypeScript, 95.9%
 ├── src/                   # Core source code
-├── supabase/              # Supabase configuration and migrations
+├── server/                # Server implementation
+├── supabase/              # Supabase configuration
 ├── tests/                 # Test suite
-├── package.json           # Root app metadata
+├── package.json           # Monorepo root
 └── README.md
 ```
 
@@ -43,7 +51,39 @@ npm start
 
 Open `http://127.0.0.1:8787`. The first registered account becomes an admin.
 
-The app runs without external packages. If `OPENAI_API_KEY` is configured, AI calls and image understanding run server-side through the provider abstraction. Without a key, the platform still uses local routing, file extraction, semantic memory, live public tools, and deterministic fallback synthesis.
+The app runs without external packages. If `OPENAI_API_KEY` is configured, AI calls and image understanding run server-side through the provider abstraction. Without a key, the platform still works with local models.
+
+## Development
+
+Run all packages in development mode:
+
+```bash
+npm run dev
+```
+
+Or run individual packages:
+
+```bash
+npm run dev -w packages/nexus-ui
+npm run dev -w packages/gpt-module
+npm run dev -w packages/frontend
+```
+
+## Building
+
+Build all packages:
+
+```bash
+npm run build
+```
+
+Build individual packages:
+
+```bash
+npm run build:nexus
+npm run build:gpt
+npm run build:frontend
+```
 
 ## Testing
 
@@ -56,15 +96,22 @@ The tests boot the app on an ephemeral port, validate security headers, register
 
 ## Available Scripts
 
+- `npm run dev` - Start all packages in development mode
+- `npm run build` - Build all packages
+- `npm run build:nexus` - Build nexus-ui only
+- `npm run build:gpt` - Build gpt-module only
+- `npm run build:frontend` - Build frontend only
 - `npm run start` - Start the server
 - `npm test` - Run tests
 - `npm run smoke` - Run smoke tests
+- `npm run lint` - Lint all packages
+- `npm run format` - Format all packages
 
 ## Security Model
 
 Secrets never go to the browser. AI provider keys, search keys, and future medical integrations belong only in backend environment variables.
 
-User data is isolated by owner id in every route. Mutating API routes require a valid session plus CSRF token. Admin metrics and audit logs require the `admin` role. The default JSON store is meant for local and early-stage deployments; production should replace it with Postgres, row-level security, encrypted object storage, and managed audit retention.
+User data is isolated by owner id in every route. Mutating API routes require a valid session plus CSRF token. Admin metrics and audit logs require the `admin` role.
 
 ## Expansion Points
 
@@ -75,6 +122,21 @@ User data is isolated by owner id in every route. Mutating API routes require a 
 - Add more tools in `server/modules/tools.mjs`; the orchestrator already supports dynamic tool planning.
 - Add observability exporters in `server/modules/analytics.mjs`.
 
+## Consolidated Repositories
+
+This monorepo consolidates:
+
+- **workmate-nexus-ui** → `packages/nexus-ui/`
+- **aiworkmategpt** → `packages/gpt-module/`
+- **ai-workmate-frontend** → `packages/frontend/`
+- **AI-WorkMate** → Root files (server, src, supabase, tests)
+
+See [MONOREPO_SETUP.md](./MONOREPO_SETUP.md) for detailed consolidation instructions.
+
 ## Node Version
 
 Requires Node.js >= 20
+
+## License
+
+See individual package directories for license information.
