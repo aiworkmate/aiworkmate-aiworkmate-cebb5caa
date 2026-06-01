@@ -154,9 +154,9 @@ async function chatStream(req, res, store, user) {
       enableLive: body.enableLive !== false,
       enableMemory: body.enableMemory !== false
     });
-    sseEvent(res, 'meta', result.meta); console.log('DBG answer len:', result.answer?.length, 'destroyed:', res.destroyed, req.destroyed);
+    sseEvent(res, 'meta', result.meta);
     for (const chunk of splitForStreaming(result.answer)) {
-      if (res.destroyed || req.destroyed) break;
+      if (res.destroyed || res.writableEnded) break;
       sseEvent(res, 'token', { text: chunk });
       await sleep(8);
     }
