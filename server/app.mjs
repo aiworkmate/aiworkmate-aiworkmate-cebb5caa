@@ -156,7 +156,7 @@ async function chatStream(req, res, store, user) {
     });
     sseEvent(res, 'meta', result.meta);
     for (const chunk of splitForStreaming(result.answer)) {
-      if (res.destroyed || req.destroyed) break;
+      if (res.destroyed || res.writableEnded) break;
       sseEvent(res, 'token', { text: chunk });
       await sleep(8);
     }
