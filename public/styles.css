@@ -112,6 +112,8 @@ svg {
   display: grid;
   grid-template-columns: 268px minmax(0, 1fr);
   min-height: 100dvh;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar {
@@ -120,8 +122,8 @@ svg {
   gap: 22px;
   padding: 18px;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(24px);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(28px);
 }
 
 .brand-row {
@@ -131,10 +133,21 @@ svg {
   min-height: 50px;
 }
 
+.brand-row strong {
+  font-weight: 700;
+  font-size: 16px;
+  background: linear-gradient(135deg, #fff, var(--accent-glow));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 .brand-row span {
   display: block;
   color: var(--muted);
   font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: .04em;
 }
 
 .brand-mark {
@@ -142,12 +155,30 @@ svg {
   place-items: center;
   width: 42px;
   height: 42px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #021014;
-  font-weight: 900;
-  box-shadow: 0 10px 35px rgba(33, 208, 179, .22);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-glow));
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  box-shadow:
+    0 10px 35px rgba(79, 70, 229, .55),
+    inset 0 1px 0 rgba(255, 255, 255, .25);
+  position: relative;
+  overflow: hidden;
 }
+
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(from 0deg, transparent, rgba(255, 255, 255, .35), transparent 40%);
+  animation: orbit 6s linear infinite;
+}
+
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+
 
 .nav-list {
   display: grid;
