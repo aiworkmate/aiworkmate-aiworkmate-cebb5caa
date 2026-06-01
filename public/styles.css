@@ -315,11 +315,22 @@ svg {
 
 .primary-button,
 .send-button {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #031015;
-  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent), var(--accent-glow));
+  color: #fff;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: .01em;
   padding: 0 16px;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, .42), inset 0 1px 0 rgba(255, 255, 255, .2);
+  transition: transform .15s ease, box-shadow .2s ease;
 }
+
+.primary-button:hover,
+.send-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(129, 140, 248, .55), inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+
 
 .send-button {
   display: grid;
