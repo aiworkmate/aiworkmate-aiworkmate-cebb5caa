@@ -1,10 +1,7 @@
 import { config } from '../config.mjs';
 import { sanitizeText } from '../lib/utils.mjs';
 import { isMedicalQuery } from './medical.mjs';
-
-function needsLiveData(text) {
-  return /\b(today|now|current|latest|recent|live|near me|hours|open|weather|forecast|news|price|stock|event|travel|map|location|research|pubmed|clinical trial|business|restaurant|flight)\b/i.test(text);
-}
+import { needsLiveData, fetchWithTimeout } from '../lib/patterns.mjs';
 
 function extractLocation(text) {
   const match = text.match(/\b(?:in|near|around|for)\s+([a-zA-Z][a-zA-Z\s,.-]{2,80})/i);
@@ -38,7 +35,7 @@ export function planTools({ message, mode = 'general', enableLive = true }) {
     plan.push({ name: 'medical_research', input: { query: text } });
   }
 
-  if (enableLive && needsLiveData(text) && !plan.some((item) => item.name === 'web_search')) {
+  if (enableLive && needsLiveData(String(text)) && !plan.some((item) => item.name === 'web_search')) {
     plan.push({ name: 'web_search', input: { query: text } });
   }
 
@@ -75,17 +72,7 @@ function calculator(expression) {
   return { expression: safe, value };
 }
 
-async function fetchJson(url, options = {}, timeoutMs = 10_000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
+const fetchJson = fetchWithTimeout;
 
 async function weather(location) {
   const query = encodeURIComponent(sanitizeText(location, 100) || 'New York');

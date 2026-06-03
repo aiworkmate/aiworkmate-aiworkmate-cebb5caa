@@ -735,6 +735,8 @@ function stopRealtimeRefresh() {
   state.realtimeTimer = null;
 }
 
+// Title truncation logic shared with server/lib/patterns.mjs titleFromText().
+// Kept inline here because public/app.js runs in-browser and cannot import server modules.
 function titleFromMessage(message) {
   return message.length > 58 ? `${message.slice(0, 58)}...` : message || 'New conversation';
 }
@@ -743,6 +745,8 @@ function emptyItem(text) {
   return `<div class="list-item"><p>${escapeHtml(text)}</p></div>`;
 }
 
+// Byte formatting logic shared with server/lib/patterns.mjs formatBytes().
+// Kept inline here because public/app.js runs in-browser and cannot import server modules.
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { config } from '../config.mjs';
 import { clampText } from '../lib/utils.mjs';
+import { fetchWithTimeout, buildMedicalTemplate } from '../lib/patterns.mjs';
 
 export async function generateFinalResponse({ system, message, context, uploads = [], mode = 'general' }) {
   const finalSystem = [
@@ -71,26 +72,14 @@ async function callChatCompletions({ system, message, context, mode }) {
 }
 
 async function providerFetch(url, body) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.ai.timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${config.ai.openaiApiKey}`,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`AI provider failed with HTTP ${response.status}: ${text.slice(0, 300)}`);
-    }
-    return response.json();
-  } finally {
-    clearTimeout(timer);
-  }
+  return fetchWithTimeout(url, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${config.ai.openaiApiKey}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(body),
+  }, config.ai.timeoutMs);
 }
 
 function flattenResponsesText(data) {
@@ -158,24 +147,15 @@ function localMedicalFinalAnswer({ message, context, uploads }) {
     ? uploads.map((upload) => `- ${upload.name}: ${upload.summary}`).join('\n')
     : '- No clinical file was attached.';
   const references = compactContextSection(context, 'Tool results for final answer');
-  return [
-    'Medical assistive answer',
-    '',
-    'Observations',
-    fileSection,
-    '',
-    'Interpretation',
-    `The request is about: ${clampText(message, 260)}. I can organize the information and draft clinician-review language, but this is not an autonomous diagnosis.`,
-    '',
-    'Uncertainty',
-    'Clinical conclusions require qualified review, complete history, original source data, and comparison with prior studies when relevant.',
-    '',
-    'Relevant references',
-    references ? summarizeContext(references) : 'No external medical reference was available in this response.',
-    '',
-    'Clinician review',
-    'Confirm identifiers, study date, clinical question, source quality, urgent findings, and recommended follow-up before using this in care.'
-  ].join('\n');
+  return buildMedicalTemplate({
+    title: 'Medical assistive answer',
+    observations: fileSection,
+    interpretation: `The request is about: ${clampText(message, 260)}. I can organize the information and draft clinician-review language, but this is not an autonomous diagnosis.`,
+    references: references ? summarizeContext(references) : 'No external medical reference was available in this response.',
+    clinicianSteps: [
+      'Confirm identifiers, study date, clinical question, source quality, urgent findings, and recommended follow-up before using this in care.'
+    ],
+  });
 }
 
 function summarizeContext(text) {

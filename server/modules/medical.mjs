@@ -1,3 +1,5 @@
+import { buildMedicalTemplate } from '../lib/patterns.mjs';
+
 export function isMedicalQuery(text) {
   return /\b(radiology|scan|ct|mri|x-ray|xray|ultrasound|dicom|pacs|fhir|hl7|patient|diagnosis|symptom|clinical|lesion|study|report|pubmed|medical|medicine|lab result)\b/i.test(text);
 }
@@ -21,25 +23,17 @@ export function localMedicalResponse({ message, tools, uploads }) {
     ? research.flatMap((item) => item.result.items || []).slice(0, 5).map((item) => `- ${item.title}${item.source ? ` (${item.source})` : ''}`).join('\n')
     : '- No external medical references were retrieved.';
 
-  return [
-    'Medical assistive summary',
-    '',
-    'Observations',
-    uploadLines,
-    '',
-    'Interpretation',
-    `The request appears to involve: "${message}". I can organize the information, compare provided documents, and prepare clinician-review language, but I cannot make an autonomous diagnosis.`,
-    '',
-    'Uncertainty',
-    'This response is limited by the files and context provided. Imaging conclusions require qualified clinician review and, for radiology, access to the original study and prior exams.',
-    '',
-    'Reference signals',
-    researchLines,
-    '',
-    'Clinician review steps',
-    '- Confirm patient identifiers, study type, date, and clinical question.',
-    '- Compare with prior imaging or reports when available.',
-    '- Keep findings, impression, and recommendations clearly separated.',
-    '- Escalate urgent or unexpected findings through the appropriate clinical workflow.'
-  ].join('\n');
+  return buildMedicalTemplate({
+    title: 'Medical assistive summary',
+    observations: uploadLines,
+    interpretation: `The request appears to involve: "${message}". I can organize the information, compare provided documents, and prepare clinician-review language, but I cannot make an autonomous diagnosis.`,
+    uncertainty: 'This response is limited by the files and context provided. Imaging conclusions require qualified clinician review and, for radiology, access to the original study and prior exams.',
+    references: `Reference signals\n${researchLines}`,
+    clinicianSteps: [
+      'Confirm patient identifiers, study type, date, and clinical question.',
+      'Compare with prior imaging or reports when available.',
+      'Keep findings, impression, and recommendations clearly separated.',
+      'Escalate urgent or unexpected findings through the appropriate clinical workflow.',
+    ],
+  });
 }

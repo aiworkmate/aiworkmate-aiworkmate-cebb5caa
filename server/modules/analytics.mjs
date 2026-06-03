@@ -1,4 +1,5 @@
 import { nowISO, uid } from '../lib/utils.mjs';
+import { cappedPush } from '../lib/patterns.mjs';
 
 export async function recordMetric(store, event) {
   const metric = {
@@ -16,8 +17,7 @@ export async function recordMetric(store, event) {
     detail: event.detail || null
   };
   await store.update((db) => {
-    db.analytics.push(metric);
-    if (db.analytics.length > 5000) db.analytics = db.analytics.slice(-5000);
+    cappedPush(db.analytics, metric);
   });
   return metric;
 }
@@ -34,8 +34,7 @@ export async function audit(store, event) {
     detail: event.detail || {}
   };
   await store.update((db) => {
-    db.auditLogs.push(entry);
-    if (db.auditLogs.length > 5000) db.auditLogs = db.auditLogs.slice(-5000);
+    cappedPush(db.auditLogs, entry);
   });
   return entry;
 }
