@@ -20,5 +20,8 @@
     "smoke": "node tests/smoke.mjs",
     "lint": "npm run lint -w packages/gpt-module",
     "format": "npm run format -w packages/gpt-module"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.107.0"
   }
 }

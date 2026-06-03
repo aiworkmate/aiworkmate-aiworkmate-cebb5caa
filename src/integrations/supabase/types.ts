@@ -4,441 +4,796 @@ export type Json =
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
-      profiles: {
+      agent_definitions: {
         Row: {
-          id: string;
-          email: string;
-          full_name: string | null;
-          avatar_url: string | null;
-          role: Database['public']['Enums']['profile_role'];
-          default_organization_id: string | null;
-          default_workspace_id: string | null;
-          settings: Json;
-          created_at: string;
-          updated_at: string;
-        };
+          agent_id: string
+          avg_latency_ms: number | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          label: string
+          last_used: string | null
+          routing_keywords: string[]
+          status: string
+          success_rate: number | null
+          total_invocations: number
+          updated_at: string
+        }
         Insert: {
-          id: string;
-          email: string;
-          full_name?: string | null;
-          avatar_url?: string | null;
-          role?: Database['public']['Enums']['profile_role'];
-          default_organization_id?: string | null;
-          default_workspace_id?: string | null;
-          settings?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
-      };
-      organizations: {
-        Row: {
-          id: string;
-          name: string;
-          slug: string | null;
-          owner_id: string;
-          plan: string;
-          metadata: Json;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          name: string;
-          slug?: string | null;
-          owner_id: string;
-          plan?: string;
-          metadata?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['organizations']['Insert']>;
-      };
-      organization_members: {
-        Row: {
-          id: string;
-          organization_id: string;
-          user_id: string;
-          role: Database['public']['Enums']['organization_role'];
-          invited_by: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          user_id: string;
-          role?: Database['public']['Enums']['organization_role'];
-          invited_by?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['organization_members']['Insert']>;
-      };
-      workspaces: {
-        Row: {
-          id: string;
-          organization_id: string;
-          name: string;
-          slug: string | null;
-          created_by: string;
-          default_mode: Database['public']['Enums']['ai_mode'];
-          metadata: Json;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          name: string;
-          slug?: string | null;
-          created_by: string;
-          default_mode?: Database['public']['Enums']['ai_mode'];
-          metadata?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['workspaces']['Insert']>;
-      };
-      workspace_members: {
-        Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string;
-          user_id: string;
-          role: Database['public']['Enums']['workspace_role'];
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id: string;
-          user_id: string;
-          role?: Database['public']['Enums']['workspace_role'];
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['workspace_members']['Insert']>;
-      };
+          agent_id: string
+          avg_latency_ms?: number | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          label: string
+          last_used?: string | null
+          routing_keywords?: string[]
+          status?: string
+          success_rate?: number | null
+          total_invocations?: number
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          avg_latency_ms?: number | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          label?: string
+          last_used?: string | null
+          routing_keywords?: string[]
+          status?: string
+          success_rate?: number | null
+          total_invocations?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string;
-          user_id: string;
-          title: string;
-          mode: Database['public']['Enums']['ai_mode'];
-          summary: string | null;
-          metadata: Json;
-          created_at: string;
-          updated_at: string;
-        };
+          agent_type: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_archived: boolean
+          is_pinned: boolean
+          last_message_preview: string | null
+          message_count: number
+          project_id: string | null
+          title: string
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id: string;
-          user_id: string;
-          title?: string;
-          mode?: Database['public']['Enums']['ai_mode'];
-          summary?: string | null;
-          metadata?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['conversations']['Insert']>;
-      };
-      messages: {
+          agent_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_archived?: boolean
+          is_pinned?: boolean
+          last_message_preview?: string | null
+          message_count?: number
+          project_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agent_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_archived?: boolean
+          is_pinned?: boolean
+          last_message_preview?: string | null
+          message_count?: number
+          project_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
         Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string;
-          conversation_id: string;
-          user_id: string | null;
-          role: Database['public']['Enums']['message_role'];
-          content: string;
-          upload_ids: string[];
-          tool_names: string[];
-          token_estimate: number;
-          model: string | null;
-          is_final_response: boolean;
-          metadata: Json;
-          created_at: string;
-        };
+          content: string | null
+          created_at: string
+          created_by: string | null
+          file_url: string | null
+          id: string
+          is_pinned: boolean
+          project_id: string | null
+          tags: string[]
+          title: string
+          type: string | null
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id: string;
-          conversation_id: string;
-          user_id?: string | null;
-          role: Database['public']['Enums']['message_role'];
-          content: string;
-          upload_ids?: string[];
-          tool_names?: string[];
-          token_estimate?: number;
-          model?: string | null;
-          is_final_response?: boolean;
-          metadata?: Json;
-          created_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['messages']['Insert']>;
-      };
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_url?: string | null
+          id?: string
+          is_pinned?: boolean
+          project_id?: string | null
+          tags?: string[]
+          title: string
+          type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_url?: string | null
+          id?: string
+          is_pinned?: boolean
+          project_id?: string | null
+          tags?: string[]
+          title?: string
+          type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      health_metrics: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string | null
+          id: string
+          metric_name: string
+          notes: string | null
+          recorded_at: string
+          status: string | null
+          unit: string | null
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metric_name: string
+          notes?: string | null
+          recorded_at?: string
+          status?: string | null
+          unit?: string | null
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metric_name?: string
+          notes?: string | null
+          recorded_at?: string
+          status?: string | null
+          unit?: string | null
+          updated_at?: string
+          value?: number
+        }
+        Relationships: []
+      }
       memories: {
         Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string | null;
-          user_id: string;
-          content: string;
-          kind: string;
-          tags: string[];
-          importance: number;
-          embedding: string | null;
-          source_message_id: string | null;
-          archived: boolean;
-          metadata: Json;
-          created_at: string;
-          updated_at: string;
-        };
+          confidence: number
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          importance: string
+          is_archived: boolean
+          is_pinned: boolean
+          layer: string
+          project_id: string | null
+          source: string | null
+          tags: string[]
+          updated_at: string
+          verified: boolean
+        }
         Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id?: string | null;
-          user_id: string;
-          content: string;
-          kind?: string;
-          tags?: string[];
-          importance?: number;
-          embedding?: string | null;
-          source_message_id?: string | null;
-          archived?: boolean;
-          metadata?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['memories']['Insert']>;
-      };
-      uploads: {
+          confidence?: number
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          importance?: string
+          is_archived?: boolean
+          is_pinned?: boolean
+          layer: string
+          project_id?: string | null
+          source?: string | null
+          tags?: string[]
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          confidence?: number
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          importance?: string
+          is_archived?: boolean
+          is_pinned?: boolean
+          layer?: string
+          project_id?: string | null
+          source?: string | null
+          tags?: string[]
+          updated_at?: string
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
         Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string;
-          user_id: string;
-          bucket_id: string;
-          storage_path: string;
-          name: string;
-          mime: string;
-          size_bytes: number;
-          status: Database['public']['Enums']['upload_status'];
-          extracted_text: string | null;
-          summary: string | null;
-          embedding: string | null;
-          metadata: Json;
-          created_at: string;
-          updated_at: string;
-        };
+          agent_type: string | null
+          content: string
+          conversation_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json
+          role: string
+          sources: Json
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id: string;
-          user_id: string;
-          bucket_id: string;
-          storage_path: string;
-          name: string;
-          mime: string;
-          size_bytes?: number;
-          status?: Database['public']['Enums']['upload_status'];
-          extracted_text?: string | null;
-          summary?: string | null;
-          embedding?: string | null;
-          metadata?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['uploads']['Insert']>;
-      };
-      workflows: {
+          agent_type?: string | null
+          content: string
+          conversation_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          role: string
+          sources?: Json
+          updated_at?: string
+        }
+        Update: {
+          agent_type?: string | null
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          role?: string
+          sources?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operational_knowledge: {
         Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string;
-          created_by: string;
-          name: string;
-          description: string | null;
-          status: Database['public']['Enums']['workflow_status'];
-          definition: Json;
-          trigger_config: Json;
-          metadata: Json;
-          created_at: string;
-          updated_at: string;
-        };
+          agent_type: string | null
+          applied_count: number
+          category: string
+          confidence: number
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          project_id: string | null
+          source: string | null
+          title: string
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id: string;
-          created_by: string;
-          name: string;
-          description?: string | null;
-          status?: Database['public']['Enums']['workflow_status'];
-          definition?: Json;
-          trigger_config?: Json;
-          metadata?: Json;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['workflows']['Insert']>;
-      };
-      workflow_runs: {
+          agent_type?: string | null
+          applied_count?: number
+          category: string
+          confidence?: number
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          project_id?: string | null
+          source?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agent_type?: string | null
+          applied_count?: number
+          category?: string
+          confidence?: number
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          project_id?: string | null
+          source?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operational_knowledge_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
         Row: {
-          id: string;
-          organization_id: string;
-          workspace_id: string;
-          workflow_id: string | null;
-          conversation_id: string | null;
-          started_by: string | null;
-          status: Database['public']['Enums']['workflow_run_status'];
-          input: Json;
-          output: Json;
-          error: string | null;
-          started_at: string;
-          completed_at: string | null;
-          metadata: Json;
-        };
+          color: string | null
+          created_at: string
+          created_by: string | null
+          decisions: Json
+          description: string | null
+          goals: Json
+          id: string
+          milestones: Json
+          name: string
+          notes: string | null
+          sources: Json
+          status: string
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          organization_id: string;
-          workspace_id: string;
-          workflow_id?: string | null;
-          conversation_id?: string | null;
-          started_by?: string | null;
-          status?: Database['public']['Enums']['workflow_run_status'];
-          input?: Json;
-          output?: Json;
-          error?: string | null;
-          started_at?: string;
-          completed_at?: string | null;
-          metadata?: Json;
-        };
-        Update: Partial<Database['public']['Tables']['workflow_runs']['Insert']>;
-      };
-      audit_logs: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          decisions?: Json
+          description?: string | null
+          goals?: Json
+          id?: string
+          milestones?: Json
+          name: string
+          notes?: string | null
+          sources?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          decisions?: Json
+          description?: string | null
+          goals?: Json
+          id?: string
+          milestones?: Json
+          name?: string
+          notes?: string | null
+          sources?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sources: {
         Row: {
-          id: string;
-          organization_id: string | null;
-          workspace_id: string | null;
-          actor_id: string | null;
-          event_type: string;
-          target_table: string | null;
-          target_id: string | null;
-          status: string;
-          ip_address: string | null;
-          user_agent: string | null;
-          detail: Json;
-          created_at: string;
-        };
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          fetched_at: string | null
+          freshness_score: number | null
+          id: string
+          is_verified: boolean
+          project_id: string | null
+          snippet: string | null
+          tags: string[]
+          title: string
+          type: string | null
+          updated_at: string
+          url: string | null
+        }
         Insert: {
-          id?: string;
-          organization_id?: string | null;
-          workspace_id?: string | null;
-          actor_id?: string | null;
-          event_type: string;
-          target_table?: string | null;
-          target_id?: string | null;
-          status?: string;
-          ip_address?: string | null;
-          user_agent?: string | null;
-          detail?: Json;
-          created_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['audit_logs']['Insert']>;
-      };
-      analytics: {
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          fetched_at?: string | null
+          freshness_score?: number | null
+          id?: string
+          is_verified?: boolean
+          project_id?: string | null
+          snippet?: string | null
+          tags?: string[]
+          title: string
+          type?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          fetched_at?: string | null
+          freshness_score?: number | null
+          id?: string
+          is_verified?: boolean
+          project_id?: string | null
+          snippet?: string | null
+          tags?: string[]
+          title?: string
+          type?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sources_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sources_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
         Row: {
-          id: string;
-          organization_id: string | null;
-          workspace_id: string | null;
-          user_id: string | null;
-          conversation_id: string | null;
-          event_type: string;
-          mode: Database['public']['Enums']['ai_mode'];
-          model: string | null;
-          latency_ms: number;
-          tokens_estimated: number;
-          tool_names: string[];
-          status: string;
-          detail: Json;
-          created_at: string;
-        };
+          approved: boolean
+          assigned_agent: string
+          blockers: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          goal_id: string | null
+          id: string
+          plan: Json
+          priority: string
+          project_id: string | null
+          requires_approval: boolean
+          result_summary: string | null
+          retry_count: number
+          status: string
+          title: string
+          updated_at: string
+          verification_status: string
+        }
         Insert: {
-          id?: string;
-          organization_id?: string | null;
-          workspace_id?: string | null;
-          user_id?: string | null;
-          conversation_id?: string | null;
-          event_type: string;
-          mode?: Database['public']['Enums']['ai_mode'];
-          model?: string | null;
-          latency_ms?: number;
-          tokens_estimated?: number;
-          tool_names?: string[];
-          status?: string;
-          detail?: Json;
-          created_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['analytics']['Insert']>;
-      };
-    };
-    Views: Record<string, never>;
+          approved?: boolean
+          assigned_agent?: string
+          blockers?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          goal_id?: string | null
+          id?: string
+          plan?: Json
+          priority?: string
+          project_id?: string | null
+          requires_approval?: boolean
+          result_summary?: string | null
+          retry_count?: number
+          status?: string
+          title: string
+          updated_at?: string
+          verification_status?: string
+        }
+        Update: {
+          approved?: boolean
+          assigned_agent?: string
+          blockers?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          goal_id?: string | null
+          id?: string
+          plan?: Json
+          priority?: string
+          project_id?: string | null
+          requires_approval?: boolean
+          result_summary?: string | null
+          retry_count?: number
+          status?: string
+          title?: string
+          updated_at?: string
+          verification_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tool_connections: {
+        Row: {
+          config: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          invocation_count: number
+          last_used: string | null
+          name: string
+          status: string
+          tool_type: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          invocation_count?: number
+          last_used?: string | null
+          name: string
+          status?: string
+          tool_type: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          invocation_count?: number
+          last_used?: string | null
+          name?: string
+          status?: string
+          tool_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      verification_logs: {
+        Row: {
+          agent_type: string | null
+          claim: string
+          confidence: number
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          evidence: Json
+          id: string
+          project_id: string | null
+          source: string | null
+          updated_at: string
+          verdict: string
+          verified_at: string
+        }
+        Insert: {
+          agent_type?: string | null
+          claim: string
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          id?: string
+          project_id?: string | null
+          source?: string | null
+          updated_at?: string
+          verdict: string
+          verified_at?: string
+        }
+        Update: {
+          agent_type?: string | null
+          claim?: string
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          id?: string
+          project_id?: string | null
+          source?: string | null
+          updated_at?: string
+          verdict?: string
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
     Functions: {
-      match_memories: {
-        Args: {
-          query_embedding: string;
-          match_count?: number;
-          match_threshold?: number;
-          p_workspace_id?: string | null;
-          p_organization_id?: string | null;
-        };
-        Returns: {
-          id: string;
-          organization_id: string;
-          workspace_id: string | null;
-          user_id: string;
-          content: string;
-          kind: string;
-          tags: string[];
-          importance: number;
-          similarity: number;
-          metadata: Json;
-          created_at: string;
-        }[];
-      };
-    };
+      [_ in never]: never
+    }
     Enums: {
-      profile_role: 'user' | 'admin' | 'clinician' | 'platform_admin';
-      organization_role: 'owner' | 'admin' | 'member' | 'viewer';
-      workspace_role: 'owner' | 'admin' | 'editor' | 'viewer';
-      ai_mode: 'general' | 'medical';
-      message_role: 'user' | 'assistant' | 'system';
-      workflow_status: 'draft' | 'active' | 'paused' | 'archived';
-      workflow_run_status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-      upload_status: 'uploaded' | 'processing' | 'ready' | 'failed' | 'archived';
-      setting_scope: 'user' | 'organization' | 'workspace';
-    };
-    CompositeTypes: Record<string, never>;
-  };
-};
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
 
-export type Tables<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Row'];
-export type TablesInsert<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Insert'];
-export type TablesUpdate<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Update'];
-export type Enums<T extends keyof Database['public']['Enums']> =
-  Database['public']['Enums'][T];
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
