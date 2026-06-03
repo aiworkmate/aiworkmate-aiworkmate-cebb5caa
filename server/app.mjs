@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config, publicConfig } from './config.mjs';
 import { createStore } from './lib/storage.mjs';
-import { audit, summarizeAnalytics } from './modules/analytics.mjs';
+import { audit, recordMetric, summarizeAnalytics } from './modules/analytics.mjs';
 import { createUpload, publicUpload, uploadsForUser } from './modules/uploads.mjs';
 import { clearCookie, cookie, createSession, getSession, hasRole, hashPassword, parseCookies, publicUser, rateLimit, requireCsrf, securityHeaders, verifyPassword } from './lib/security.mjs';
 import { json, nowISO, readJson, sanitizeText, splitForStreaming, sseEvent, sseStart, sleep, uid } from './lib/utils.mjs';
@@ -37,6 +37,7 @@ export async function createApp() {
       return await staticFile(req, res, url);
     } catch (error) {
       const status = error.status || 500;
+      if (status === 500) console.error('Unhandled request error:', error);
       return json(res, status, { error: status === 500 ? 'Internal server error.' : error.message });
     }
   }
@@ -144,6 +145,7 @@ function setSessionCookies(res, session) {
 async function chatStream(req, res, store, user) {
   const body = await readJson(req, config.maxUploadBytes + 64_000);
   sseStart(res);
+  const streamStarted = Date.now();
   try {
     const result = await orchestrateChat(store, {
       user,
@@ -162,7 +164,16 @@ async function chatStream(req, res, store, user) {
     }
     sseEvent(res, 'done', { conversationId: result.conversationId });
   } catch (error) {
+    console.error('Chat stream error:', error);
     sseEvent(res, 'error', { error: error.message });
+    recordMetric(store, {
+      type: 'chat',
+      userId: user.id,
+      latencyMs: Date.now() - streamStarted,
+      mode: body.mode === 'medical' ? 'medical' : 'general',
+      status: 'error',
+      detail: { error: error.message }
+    }).catch(() => {});
   } finally {
     res.end();
   }
@@ -238,6 +249,7 @@ function memoryList(res, store, user, url) {
 async function memoryCreate(req, res, store, user) {
   const body = await readJson(req, 64_000);
   const memory = await saveMemory(store, user.id, body.content, { kind: body.kind || 'manual', importance: 0.9, tags: Array.isArray(body.tags) ? body.tags : [] });
+  if (!memory) return json(res, 400, { error: 'Memory content must not be empty.' });
   await audit(store, { actorId: user.id, type: 'memory.create', targetId: memory.id });
   const { embedding, ...safe } = memory;
   return json(res, 201, { memory: safe });
@@ -248,6 +260,7 @@ async function accountUpdate(req, res, store, user) {
   let updated;
   await store.update((db) => {
     updated = db.users.find((item) => item.id === user.id);
+    if (!updated) return;
     updated.name = sanitizeText(body.name || updated.name, 100);
     updated.settings = {
       ...updated.settings,
@@ -255,6 +268,7 @@ async function accountUpdate(req, res, store, user) {
     };
     updated.updatedAt = nowISO();
   });
+  if (!updated) return json(res, 404, { error: 'Account not found.' });
   await audit(store, { actorId: user.id, type: 'account.update', targetId: user.id });
   return json(res, 200, { user: publicUser(updated) });
 }
@@ -289,10 +303,15 @@ async function staticFile(req, res, url) {
     res.end(data);
   } catch (error) {
     if (error.code === 'ENOENT') {
-      const data = await fs.readFile(path.join(config.publicDir, 'index.html'));
-      res.writeHead(200, { 'content-type': mimeTypes['.html'], 'cache-control': 'no-store' });
-      res.end(data);
-      return;
+      try {
+        const data = await fs.readFile(path.join(config.publicDir, 'index.html'));
+        res.writeHead(200, { 'content-type': mimeTypes['.html'], 'cache-control': 'no-store' });
+        res.end(data);
+        return;
+      } catch (fallbackError) {
+        console.error('SPA fallback index.html not found:', fallbackError.message);
+        throw fallbackError;
+      }
     }
     throw error;
   }

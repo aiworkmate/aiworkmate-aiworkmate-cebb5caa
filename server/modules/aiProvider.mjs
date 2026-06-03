@@ -18,7 +18,8 @@ export async function generateFinalResponse({ system, message, context, uploads 
       finalAnswer = config.ai.endpointStyle === 'chat'
         ? await callChatCompletions({ system: finalSystem, message, context, mode })
         : await callResponses({ system: finalSystem, message, context, uploads, mode });
-    } catch {
+    } catch (error) {
+      console.error('AI provider call failed, falling back to local response:', error.message || error);
       finalAnswer = localFinalAnswer({ message, context, uploads, mode });
     }
   } else {
@@ -41,8 +42,8 @@ async function callResponses({ system, message, context, uploads, mode }) {
     try {
       const data = await fs.readFile(upload.storedPath);
       content.push({ type: 'input_image', image_url: `data:${upload.mime};base64,${data.toString('base64')}` });
-    } catch {
-      // If the file disappeared, continue with extracted metadata.
+    } catch (error) {
+      console.warn(`Image file unreadable for upload ${upload.storedPath}, skipping:`, error.message || error);
     }
   }
   const body = {

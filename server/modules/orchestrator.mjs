@@ -18,7 +18,22 @@ export async function orchestrateChat(store, { user, message, conversationId, mo
 
   const system = buildSystemPrompt(mode);
   const context = buildContext({ memories, tools, uploads, mode, route });
-  const answer = await generateFinalResponse({ system, message: text, context, uploads, mode });
+
+  let answer;
+  try {
+    answer = await generateFinalResponse({ system, message: text, context, uploads, mode });
+  } catch (error) {
+    await recordMetric(store, {
+      type: 'chat',
+      userId: user.id,
+      latencyMs: Date.now() - started,
+      toolNames: tools.map((item) => item.name),
+      mode,
+      status: 'error',
+      detail: { error: error.message }
+    });
+    throw error;
+  }
 
   if (!answer) {
     throw new Error('Missing final LLM response stage');
