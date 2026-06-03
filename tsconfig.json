@@ -11,8 +11,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "preserve",
-    "types": ["vite/client"]
+    "types": []
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "server", "tests", "supabase"]
+  "exclude": ["node_modules", "dist", "server", "tests", "supabase", "src/integrations"]
 }
