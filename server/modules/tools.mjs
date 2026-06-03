@@ -52,6 +52,7 @@ export async function runToolPlan(plan) {
       const result = await runTool(item.name, item.input || {});
       return { name: item.name, ok: true, latencyMs: Date.now() - started, result };
     } catch (error) {
+      console.warn(`Tool "${item.name}" failed:`, error.message || error);
       return { name: item.name, ok: false, latencyMs: Date.now() - started, error: error.message };
     }
   }));
