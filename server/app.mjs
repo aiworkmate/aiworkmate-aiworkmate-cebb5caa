@@ -7,6 +7,7 @@ import { audit, summarizeAnalytics } from './modules/analytics.mjs';
 import { createUpload, publicUpload, uploadsForUser } from './modules/uploads.mjs';
 import { clearCookie, cookie, createSession, getSession, hasRole, hashPassword, parseCookies, publicUser, rateLimit, requireCsrf, securityHeaders, verifyPassword } from './lib/security.mjs';
 import { json, nowISO, readJson, sanitizeText, splitForStreaming, sseEvent, sseStart, sleep, uid } from './lib/utils.mjs';
+import { parseChatOptions } from './lib/patterns.mjs';
 import { orchestrateChat } from './modules/orchestrator.mjs';
 import { saveMemory, searchMemories } from './modules/memory.mjs';
 
@@ -145,15 +146,7 @@ async function chatStream(req, res, store, user) {
   const body = await readJson(req, config.maxUploadBytes + 64_000);
   sseStart(res);
   try {
-    const result = await orchestrateChat(store, {
-      user,
-      message: body.message,
-      conversationId: body.conversationId,
-      mode: body.mode === 'medical' ? 'medical' : 'general',
-      uploadIds: Array.isArray(body.uploadIds) ? body.uploadIds : [],
-      enableLive: body.enableLive !== false,
-      enableMemory: body.enableMemory !== false
-    });
+    const result = await orchestrateChat(store, { user, ...parseChatOptions(body) });
     sseEvent(res, 'meta', result.meta);
     for (const chunk of splitForStreaming(result.answer)) {
       if (res.destroyed || req.destroyed) break;
@@ -170,15 +163,7 @@ async function chatStream(req, res, store, user) {
 
 async function chat(req, res, store, user) {
   const body = await readJson(req, config.maxUploadBytes + 64_000);
-  const result = await orchestrateChat(store, {
-    user,
-    message: body.message,
-    conversationId: body.conversationId,
-    mode: body.mode === 'medical' ? 'medical' : 'general',
-    uploadIds: Array.isArray(body.uploadIds) ? body.uploadIds : [],
-    enableLive: body.enableLive !== false,
-    enableMemory: body.enableMemory !== false
-  });
+  const result = await orchestrateChat(store, { user, ...parseChatOptions(body) });
   return json(res, 200, { response: result.response });
 }
 

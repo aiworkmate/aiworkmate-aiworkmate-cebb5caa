@@ -5,6 +5,7 @@ import { isMedicalQuery, medicalSystemFrame } from './medical.mjs';
 import { planTools, runToolPlan } from './tools.mjs';
 import { uploadContext } from './uploads.mjs';
 import { clampText, nowISO, sanitizeText, uid } from '../lib/utils.mjs';
+import { needsLiveData, titleFromText } from '../lib/patterns.mjs';
 
 export async function orchestrateChat(store, { user, message, conversationId, mode = 'general', uploadIds = [], enableLive = true, enableMemory = true }) {
   const started = Date.now();
@@ -68,7 +69,7 @@ function buildSystemPrompt(mode) {
 
 function routeRequest({ text, mode, enableLive, enableMemory, uploadIds }) {
   const medical = mode === 'medical' || isMedicalQuery(text);
-  const needsWeb = Boolean(enableLive && /\b(today|now|current|latest|recent|live|near me|hours|open|weather|forecast|news|price|stock|event|travel|map|location|research|pubmed|clinical trial|business|restaurant|flight)\b/i.test(text));
+  const needsWeb = Boolean(enableLive && needsLiveData(text));
   const needsTools = needsWeb || /\b(calculate|compute|solve|weather|forecast|news|research|pubmed|map|location)\b/i.test(text) || medical;
   return {
     intent: medical ? 'medical_assist' : uploadIds.length ? 'file_grounded_chat' : 'general_chat',
@@ -141,6 +142,5 @@ async function saveConversationTurn(store, { user, conversationId, text, answer,
 }
 
 function titleFrom(text) {
-  const clean = sanitizeText(text, 80);
-  return clean.length > 58 ? `${clean.slice(0, 58)}...` : clean || 'New conversation';
+  return titleFromText(text, { sanitize: true });
 }

@@ -5,6 +5,7 @@ import { FileText, Upload, Trash2, Search, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { PageHeader, EmptyState, StatusPill } from "@/components/page-primitives";
+import { formatBytes } from "@/lib/utils";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/uploads")({
@@ -13,12 +14,6 @@ export const Route = createFileRoute("/app/uploads")({
 });
 
 interface UploadRow { id: string; file_name: string; file_size: number; mime_type: string | null; status: string; created_at: string; storage_path: string }
-
-function fmtBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function UploadsPage() {
   const { user } = useAuth();
@@ -119,7 +114,7 @@ function UploadsPage() {
                 {filtered.map((u) => (
                   <tr key={u.id} className="hover:bg-surface/40">
                     <td className="px-4 py-3"><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" /><span className="truncate font-medium">{u.file_name}</span></div></td>
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{fmtBytes(u.file_size)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{formatBytes(u.file_size)}</td>
                     <td className="px-4 py-3"><StatusPill tone={u.status === "ready" ? "success" : u.status === "failed" ? "danger" : "warning"}>{u.status}</StatusPill></td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{new Date(u.created_at).toLocaleString()}</td>
                     <td className="px-4 py-3">
