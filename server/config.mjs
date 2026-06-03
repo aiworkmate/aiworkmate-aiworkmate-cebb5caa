@@ -25,7 +25,12 @@ export const config = {
   sessionCookie: 'wm_session',
   csrfCookie: 'wm_csrf',
   sessionTtlMs: intEnv('SESSION_TTL_MS', 1000 * 60 * 60 * 24 * 14),
-  sessionSecret: env.SESSION_SECRET || 'local-development-change-me',
+  sessionSecret: env.SESSION_SECRET || (() => {
+    if (env.NODE_ENV === 'production') {
+      console.error('SECURITY WARNING: SESSION_SECRET is not set. Sessions will not be secure.');
+    }
+    return 'local-development-change-me';
+  })(),
   rateLimitWindowMs: intEnv('RATE_LIMIT_WINDOW_MS', 60_000),
   rateLimitMax: intEnv('RATE_LIMIT_MAX', 120),
   maxUploadBytes: intEnv('MAX_UPLOAD_MB', 12) * 1024 * 1024,

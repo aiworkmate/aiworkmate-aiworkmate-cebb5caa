@@ -69,10 +69,57 @@ export async function runTool(name, input) {
 
 function calculator(expression) {
   const safe = String(expression || '').trim();
-  if (!/^[0-9+\-*/().\s%*]+$/.test(safe)) throw new Error('Unsafe calculation expression.');
-  const value = Function(`"use strict"; return (${safe});`)();
+  if (!/^[0-9+\-*/().\s%]+$/.test(safe)) throw new Error('Unsafe calculation expression.');
+  if (safe.length > 120) throw new Error('Expression is too long.');
+  const tokens = safe.match(/(?:\d+\.?\d*|[+\-*/().%])/g) || [];
+  const value = evalTokens(tokens);
   if (!Number.isFinite(value)) throw new Error('Calculation did not produce a finite number.');
   return { expression: safe, value };
+}
+
+function evalTokens(tokens) {
+  let pos = 0;
+  function peek() { return tokens[pos]; }
+  function consume() { return tokens[pos++]; }
+  function parseExpr() {
+    let left = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const op = consume();
+      const right = parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+  function parseTerm() {
+    let left = parseFactor();
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const op = consume();
+      const right = parseFactor();
+      if (op === '*') left = left * right;
+      else if (op === '/') { if (right === 0) throw new Error('Division by zero.'); left = left / right; }
+      else left = left % right;
+    }
+    return left;
+  }
+  function parseFactor() {
+    if (peek() === '(') {
+      consume();
+      const val = parseExpr();
+      if (peek() === ')') consume();
+      return val;
+    }
+    if (peek() === '-') {
+      consume();
+      return -parseFactor();
+    }
+    const tok = consume();
+    const num = Number(tok);
+    if (!Number.isFinite(num)) throw new Error('Invalid token in expression.');
+    return num;
+  }
+  const result = parseExpr();
+  if (pos < tokens.length) throw new Error('Unexpected token in expression.');
+  return result;
 }
 
 async function fetchJson(url, options = {}, timeoutMs = 10_000) {
