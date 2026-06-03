@@ -156,7 +156,7 @@ async function chatStream(req, res, store, user) {
     });
     sseEvent(res, 'meta', result.meta);
     for (const chunk of splitForStreaming(result.answer)) {
-      if (res.destroyed || req.destroyed) break;
+      if (res.destroyed) break;
       sseEvent(res, 'token', { text: chunk });
       await sleep(8);
     }
@@ -249,10 +249,17 @@ async function accountUpdate(req, res, store, user) {
   await store.update((db) => {
     updated = db.users.find((item) => item.id === user.id);
     updated.name = sanitizeText(body.name || updated.name, 100);
-    updated.settings = {
-      ...updated.settings,
-      ...(typeof body.settings === 'object' && body.settings ? body.settings : {})
-    };
+    const allowedSettings = ['theme', 'defaultMode', 'liveData', 'memory', 'language', 'timezone'];
+    if (typeof body.settings === 'object' && body.settings && !Array.isArray(body.settings)) {
+      for (const key of allowedSettings) {
+        if (key in body.settings) {
+          const val = body.settings[key];
+          if (typeof val === 'string' || typeof val === 'boolean') {
+            updated.settings[key] = val;
+          }
+        }
+      }
+    }
     updated.updatedAt = nowISO();
   });
   await audit(store, { actorId: user.id, type: 'account.update', targetId: user.id });

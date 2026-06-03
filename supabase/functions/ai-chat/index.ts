@@ -10,15 +10,22 @@ type Route = {
   needsMedical: boolean;
 };
 
-const corsHeaders = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
-  'access-control-allow-methods': 'POST, OPTIONS'
-};
+const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+function corsHeaders(req?: Request) {
+  const origin = req?.headers.get('origin') || '';
+  const allowed = allowedOrigins.length === 0 || allowedOrigins.includes(origin);
+  return {
+    'access-control-allow-origin': allowed ? origin : allowedOrigins[0] || '',
+    'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
+    'access-control-allow-methods': 'POST, OPTIONS',
+    'vary': 'Origin'
+  };
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
 
   const started = Date.now();
@@ -75,8 +82,6 @@ serve(async (req) => {
     throw new Error('Missing final LLM response stage');
   }
 
-  console.log('FINAL RESPONSE:', finalResponse);
-
   await persistTurn(serviceClient, {
     userId: user.id,
     organizationId,
@@ -90,7 +95,7 @@ serve(async (req) => {
     latencyMs: Date.now() - started
   });
 
-  return json({ response: finalResponse });
+  return json({ response: finalResponse }, 200, req);
 });
 
 function router(message: string, mode: string, uploadIds: string[]): Route {
@@ -298,10 +303,10 @@ async function persistTurn(client: any, input: {
   });
 }
 
-function json(body: unknown, status = 200) {
+function json(body: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'content-type': 'application/json' }
+    headers: { ...corsHeaders(req), 'content-type': 'application/json' }
   });
 }
 

@@ -29,7 +29,7 @@ export async function generateFinalResponse({ system, message, context, uploads 
   if (!finalAnswer) {
     throw new Error('Missing final LLM response stage');
   }
-  console.log('FINAL RESPONSE:', finalAnswer);
+  if (process.env.NODE_ENV === 'development') console.log('FINAL RESPONSE length:', finalAnswer.length);
   return finalAnswer;
 }
 
